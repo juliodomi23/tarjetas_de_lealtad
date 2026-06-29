@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mi tarjeta de lealtad</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="card">
+  <h1 id="biz">Tarjeta de lealtad</h1>
+  <p class="muted">Regístrate con tu WhatsApp y empieza a juntar sellos.</p>
+  <input id="name" placeholder="Tu nombre" autocomplete="name">
+  <input id="phone" placeholder="WhatsApp (10 dígitos)" inputmode="tel" autocomplete="tel">
+  <button id="go">Crear mi tarjeta</button>
+  <p id="msg" class="err"></p>
+</div>
+<script>
+  fetch('/api/config').then(r => r.json())
+    .then(c => { document.getElementById('biz').textContent = c.business; });
+
+  // Si ya tiene tarjeta en este dispositivo, lo mandamos directo.
+  const saved = localStorage.getItem('token');
+  if (saved) location.href = 'card.html?t=' + saved;
+
+  document.getElementById('go').onclick = async () => {
+    const phone = document.getElementById('phone').value;
+    const name = document.getElementById('name').value;
+    const msg = document.getElementById('msg');
+    msg.textContent = '';
+    const r = await fetch('/api/join', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, name })
+    });
+    const data = await r.json();
+    if (!r.ok) { msg.textContent = data.error; return; }
+    localStorage.setItem('token', data.token);
+    location.href = 'card.html?t=' + data.token;
+  };
+</script>
+</body>
+</html>

@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel — Dueño</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  /* Dashboard data-dense: layout ancho, grid compacto, no la tarjeta centrada. */
+  body { display:block; align-items:initial; padding:18px; }
+  .wrap { max-width:1200px; margin:0 auto; }
+
+  /* En pantallas anchas: gráfica y tabla lado a lado para llenar el espacio. */
+  .grid { display:grid; grid-template-columns:1fr 1.3fr; gap:16px; align-items:start; margin-top:16px; }
+  .grid .panel { margin-top:0; height:100%; }
+  @media (max-width: 900px) { .grid { grid-template-columns:1fr; } }
+
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:18px; }
+  .brand { display:flex; align-items:center; gap:12px; min-width:0; }
+  .badge { width:44px; height:44px; border-radius:12px; background:#e23b3b; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 20px rgba(226,59,59,.35); }
+  .brand h1 { font-size:1.35rem; margin:0; line-height:1.1; white-space:nowrap;
+    overflow:hidden; text-overflow:ellipsis; }
+  .brand .sub { color:#8b90a8; font-size:.8rem; }
+  .ghost { width:auto; padding:10px 16px; margin:0; background:#1a1f35; color:#f2f3f7;
+    border:1px solid #2c3354; display:flex; align-items:center; gap:8px;
+    transition:border-color .2s, background .2s; }
+  .ghost:hover { background:#222843; border-color:#3a4470; }
+
+  .kpis { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:12px; }
+  .kpi { background:#1a1f35; border:1px solid #232a47; border-radius:14px; padding:15px;
+    display:flex; gap:12px; align-items:center; transition:border-color .2s, transform .2s; }
+  .kpi:hover { border-color:#3a4470; transform:translateY(-2px); }
+  .kpi .ic { width:38px; height:38px; border-radius:10px; flex:none;
+    display:flex; align-items:center; justify-content:center; }
+  .kpi .n { font-size:1.7rem; font-weight:700; line-height:1; }
+  .kpi .l { color:#8b90a8; font-size:.78rem; margin-top:3px; }
+
+  .panel { background:#1a1f35; border:1px solid #232a47; border-radius:16px; padding:18px; margin-top:16px; }
+  .panel h2 { font-size:1rem; margin:0 0 16px; display:flex; align-items:center; gap:8px; }
+
+  /* Gráfica de barras con cuadrícula y etiquetas. */
+  .chart { display:flex; align-items:flex-end; gap:5px; height:240px;
+    border-bottom:1px solid #2c3354; padding-top:20px; }
+  .bar { flex:1; background:linear-gradient(180deg,#e23b3b,#b62d2d); border-radius:5px 5px 0 0;
+    min-height:3px; position:relative; cursor:default; transition:filter .15s; }
+  .bar:hover { filter:brightness(1.2); }
+  .bar b { position:absolute; top:-17px; left:0; right:0; text-align:center; font-size:.7rem; color:#f2f3f7; }
+  .xlabels { display:flex; gap:5px; margin-top:6px; }
+  .xlabels span { flex:1; text-align:center; font-size:.6rem; color:#8b90a8; }
+
+  .toolbar { display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:12px; }
+  .toolbar .count { color:#8b90a8; font-size:.82rem; white-space:nowrap; }
+  .search { margin:0; flex:1; }
+
+  .tscroll { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.9rem; }
+  thead th { position:sticky; top:0; background:#1a1f35; }
+  th, td { text-align:left; padding:11px 8px; border-bottom:1px solid #2c3354; white-space:nowrap; }
+  th { color:#8b90a8; font-weight:600; }
+  th.sortable { cursor:pointer; user-select:none; transition:color .2s; }
+  th.sortable:hover { color:#f2f3f7; }
+  th .arrow { opacity:.5; font-size:.7rem; }
+  tbody tr { transition:background .15s; }
+  tbody tr:hover { background:#222843; }
+  td a { color:#37d67a; text-decoration:none; }
+  td a:hover { text-decoration:underline; }
+  .tag { background:#2c3354; border-radius:8px; padding:2px 9px; font-size:.78rem; }
+  .tag.win { background:#1f4a32; color:#37d67a; }
+  .tag.near { background:#4a3a14; color:#f5a623; }
+
+  .state { color:#8b90a8; text-align:center; padding:28px 0; }
+  .spin { width:22px; height:22px; border:3px solid #2c3354; border-top-color:#e23b3b;
+    border-radius:50%; display:inline-block; animation:spin .8s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  :focus-visible { outline:2px solid #e23b3b; outline-offset:2px; border-radius:6px; }
+  @media (prefers-reduced-motion: reduce) { * { transition:none !important; animation:none !important; } }
+
+  /* --- Celular: 2 KPIs por fila y tabla convertida en lista de tarjetas. --- */
+  @media (max-width: 640px) {
+    body { padding:14px; }
+    .top { flex-wrap:wrap; }
+    .brand h1 { font-size:1.2rem; white-space:normal; }
+    .kpis { grid-template-columns:1fr 1fr; }
+    .kpi { padding:13px; }
+    .kpi .n { font-size:1.5rem; }
+
+    thead { display:none; } /* sin encabezados: cada fila es una tarjeta */
+    table, tbody, tr, td { display:block; width:100%; }
+    tbody tr { border:1px solid #232a47; border-radius:12px; margin-bottom:10px;
+      background:#161b30; padding:4px 0; }
+    tbody tr:hover { background:#161b30; }
+    td { border:none; display:flex; justify-content:space-between; align-items:center;
+      gap:12px; padding:8px 14px; white-space:normal; }
+    td::before { content:attr(data-label); color:#8b90a8; font-size:.82rem; }
+    td[data-label="Nombre"] { font-weight:600; font-size:1.05rem; padding-top:12px; }
+    td[data-label="Nombre"]::before { display:none; } /* el nombre es el título */
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top">
+    <div class="brand">
+      <div class="badge">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"><path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0L12 5.36l-.77-.78a5.4 5.4 0 0 0-7.65 7.65l.78.77L12 20.66l7.64-7.66.78-.77a5.4 5.4 0 0 0 0-7.65z"/></svg>
+      </div>
+      <div>
+        <h1 id="biz">Panel</h1>
+        <div class="sub">Programa de lealtad · vista del dueño</div>
+      </div>
+    </div>
+    <button class="ghost" id="refresh" aria-label="Actualizar datos">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+      Actualizar
+    </button>
+  </div>
+
+  <div class="kpis" id="kpis">
+    <div class="state"><span class="spin"></span> Cargando métricas…</div>
+  </div>
+
+  <div class="grid">
+  <div class="panel">
+    <h2>Sellos por día <span style="color:#8b90a8;font-weight:400">· últimos 14 días</span></h2>
+    <div id="chart"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Clientes</h2>
+    <div class="toolbar">
+      <input class="search" id="search" placeholder="Buscar por nombre o teléfono…" aria-label="Buscar clientes">
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tscroll">
+      <table>
+        <thead><tr>
+          <th>Nombre</th>
+          <th>WhatsApp</th>
+          <th class="sortable" data-k="stamps">Sellos <span class="arrow">↕</span></th>
+          <th class="sortable" data-k="rewards">Premios <span class="arrow">↕</span></th>
+          <th class="sortable" data-k="created_at">Alta <span class="arrow">↕</span></th>
+        </tr></thead>
+        <tbody id="rows"><tr><td colspan="5" class="state"><span class="spin"></span></td></tr></tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+</div>
+
+<script>
+  // Misma clave que el personal.
+  let pass = localStorage.getItem('staffPass');
+  if (!pass) { pass = prompt('Clave del personal:') || ''; localStorage.setItem('staffPass', pass); }
+  const auth = { headers: { 'Authorization': 'Bearer ' + pass } };
+
+  let customers = [];
+  let goal = 0;
+  let sort = { k: 'created_at', dir: -1 };
+
+  async function api(path) {
+    const r = await fetch(path, auth);
+    if (r.status === 401) {
+      localStorage.removeItem('staffPass');
+      throw new Error('401');
+    }
+    return r.json();
+  }
+
+  const icon = {
+    users: '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+    stamp: '<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="M22 4 12 14.01l-3-3"/>',
+    gift: '<polyline points="20 12 20 22 4 22 4 12"/><rect x="2" y="7" width="20" height="5"/><line x1="12" y1="22" x2="12" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+    target: '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/>',
+    clock: '<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>',
+    userplus: '<path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>',
+  };
+  function svg(name, color) {
+    return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="${color}"
+      stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon[name]}</svg>`;
+  }
+  function kpi(name, color, n, l) {
+    return `<div class="kpi"><div class="ic" style="background:${color}22">${svg(name, color)}</div>
+      <div><div class="n">${n}</div><div class="l">${l}</div></div></div>`;
+  }
+
+  function renderStats(s) {
+    goal = s.goal;
+    document.getElementById('biz').textContent = s.business;
+    document.title = 'Panel — ' + s.business;
+    document.getElementById('kpis').innerHTML = [
+      kpi('users',    '#3b82f6', s.customers,   'Clientes'),
+      kpi('stamp',    '#e23b3b', s.visits,      'Sellos otorgados'),
+      kpi('gift',     '#37d67a', s.rewards,     'Premios ganados'),
+      kpi('target',   '#f5a623', s.near_reward, 'A 1 sello del premio'),
+      kpi('clock',    '#8b90a8', s.in_progress, 'Sellos en curso'),
+      kpi('userplus', '#a78bfa', s.new_today,   'Nuevos hoy'),
+    ].join('');
+
+    const chart = document.getElementById('chart');
+    if (!s.daily.length) { chart.innerHTML = '<p class="state">Sin actividad todavía.</p>'; return; }
+    const max = Math.max(...s.daily.map(d => d.n));
+    const bars = s.daily.map(d =>
+      `<div class="bar" style="height:${(d.n / max * 100).toFixed(0)}%"
+        title="${d.d}: ${d.n} sello${d.n === 1 ? '' : 's'}"><b>${d.n}</b></div>`).join('');
+    const labels = s.daily.map(d => `<span>${d.d.slice(5)}</span>`).join('');
+    chart.innerHTML = `<div class="chart">${bars}</div><div class="xlabels">${labels}</div>`;
+  }
+
+  function renderRows() {
+    const q = document.getElementById('search').value.toLowerCase().trim();
+    let list = customers.filter(c =>
+      (c.name || '').toLowerCase().includes(q) || c.phone.includes(q));
+    list.sort((a, b) => {
+      const x = a[sort.k], y = b[sort.k];
+      return (x > y ? 1 : x < y ? -1 : 0) * sort.dir;
+    });
+    document.getElementById('count').textContent = `${list.length} de ${customers.length}`;
+    const wa = p => '52' + p; // México: prefijo país para wa.me
+    document.getElementById('rows').innerHTML = list.map(c => `<tr>
+      <td data-label="Nombre">${c.name || '—'}</td>
+      <td data-label="WhatsApp"><a href="https://wa.me/${wa(c.phone)}" target="_blank" rel="noopener">${c.phone}</a></td>
+      <td data-label="Sellos">${c.stamps === goal - 1
+            ? `<span class="tag near">${c.stamps}/${goal}</span>`
+            : `${c.stamps}/${goal}`}</td>
+      <td data-label="Premios">${c.rewards > 0 ? `<span class="tag win">${c.rewards}</span>` : '0'}</td>
+      <td data-label="Alta">${c.created_at.slice(0, 10)}</td>
+    </tr>`).join('') || '<tr><td colspan="5" class="state">Sin clientes que coincidan.</td></tr>';
+  }
+
+  document.getElementById('search').oninput = renderRows;
+  document.querySelectorAll('th.sortable').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    sort = { k, dir: sort.k === k ? -sort.dir : -1 };
+    renderRows();
+  });
+
+  async function load() {
+    try {
+      const [s, list] = await Promise.all([api('/api/stats'), api('/api/customers')]);
+      customers = list;
+      renderStats(s);
+      renderRows();
+    } catch (e) {
+      const msg = e.message === '401'
+        ? 'Clave incorrecta. <a href="" style="color:#e23b3b">Recargar</a>'
+        : 'No se pudo cargar. Revisa tu conexión.';
+      document.getElementById('kpis').innerHTML = `<p class="state">${msg}</p>`;
+    }
+  }
+
+  document.getElementById('refresh').onclick = load;
+  load();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "tarjetas-lealtad",
+  "version": "0.1.0",
+  "description": "Tarjetas de lealtad digitales con QR (instancia por negocio)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.19.0"
+  }
+}
