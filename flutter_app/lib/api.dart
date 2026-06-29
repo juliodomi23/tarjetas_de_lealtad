@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-const apiBase = 'https://lealtad.ambarrojo.com';
+const apiBase = 'https://lealtad.ambarrojostudios.cloud';
 
 class AppConfig {
   final String business;
