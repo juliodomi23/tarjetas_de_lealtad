@@ -1,14 +1,13 @@
 const express = require('express');
 const path = require('path');
-const { openDb, join, addStamp, stats, listCustomers } = require('./db');
+const { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, stats, listCustomers } = require('./db');
 
 const PORT = process.env.PORT || 3000;
-const GOAL = Number(process.env.GOAL || 8);
 const BUSINESS = process.env.BUSINESS_NAME || 'Mi Negocio';
-const REWARD = process.env.REWARD_TEXT || 'Premio gratis';
 const ADMIN_PASS = process.env.ADMIN_PASS || 'cambiar';
 const PRIMARY_COLOR = process.env.PRIMARY_COLOR || '#E23B3B';
 const LOGO_URL = process.env.LOGO_URL || '';
+const CYCLE_DAYS = Number(process.env.CYCLE_DAYS || 30);
 
 const db = openDb(process.env.DB_FILE || 'loyalty.db');
 const app = express();
@@ -16,7 +15,7 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/config', (req, res) =>
-  res.json({ business: BUSINESS, goal: GOAL, reward_text: REWARD, primary_color: PRIMARY_COLOR, logo_url: LOGO_URL }));
+  res.json({ business: BUSINESS, primary_color: PRIMARY_COLOR, logo_url: LOGO_URL, cycle_days: CYCLE_DAYS, reward_tiers: getRewardTiers(db) }));
 
 app.post('/api/join', (req, res) => {
   try {
@@ -25,13 +24,11 @@ app.post('/api/join', (req, res) => {
 });
 
 app.get('/api/card', (req, res) => {
-  const c = db.prepare('SELECT name, stamps, rewards FROM customers WHERE token=?')
-    .get(req.query.t);
+  const c = db.prepare('SELECT name, stamps, total_rewards, cycle_start FROM customers WHERE token=?').get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
-  res.json({ ...c, goal: GOAL, business: BUSINESS, reward_text: REWARD });
+  res.json({ ...c, business: BUSINESS, reward_tiers: getRewardTiers(db), cycle_days: CYCLE_DAYS });
 });
 
-// Solo el personal del negocio puede sellar (anti-fraude).
 function staff(req, res, next) {
   const pass = (req.headers.authorization || '').replace('Bearer ', '');
   if (pass !== ADMIN_PASS) return res.status(401).json({ error: 'No autorizado' });
@@ -39,16 +36,30 @@ function staff(req, res, next) {
 }
 
 app.post('/api/stamp', staff, (req, res) => {
-  try {
-    res.json(addStamp(db, req.body.token, GOAL));
-  } catch (e) { res.status(400).json({ error: e.message }); }
+  try { res.json(addStamp(db, req.body.token, CYCLE_DAYS)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Panel del dueño (misma clave que el personal).
+// CRUD recompensas (solo personal/dueño)
+app.get('/api/reward-tiers', staff, (req, res) => res.json(getRewardTiers(db)));
+
+app.post('/api/reward-tiers', staff, (req, res) => {
+  const { stamps_required, description } = req.body;
+  if (!stamps_required || !description) return res.status(400).json({ error: 'Faltan campos' });
+  res.json(addRewardTier(db, Number(stamps_required), description));
+});
+
+app.put('/api/reward-tiers/:id', staff, (req, res) => {
+  const { stamps_required, description } = req.body;
+  res.json(updateRewardTier(db, req.params.id, Number(stamps_required), description));
+});
+
+app.delete('/api/reward-tiers/:id', staff, (req, res) =>
+  res.json(deleteRewardTier(db, req.params.id)));
+
 app.get('/api/stats', staff, (req, res) =>
-  res.json({ ...stats(db, GOAL), goal: GOAL, business: BUSINESS, reward_text: REWARD }));
+  res.json({ ...stats(db), business: BUSINESS }));
 
 app.get('/api/customers', staff, (req, res) => res.json(listCustomers(db)));
 
-app.listen(PORT, () =>
-  console.log(`Tarjetas de lealtad "${BUSINESS}" en http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(`Tarjetas de lealtad "${BUSINESS}" en http://localhost:${PORT}`));
