@@ -136,4 +136,19 @@ class Api {
         headers: {'Authorization': 'Bearer $pass'});
     return (jsonDecode(r.body) as List).map((t) => RewardTier.fromJson(t)).toList();
   }
+
+  static Future<Map<String, dynamic>> getSettings(String pass) async {
+    final r = await http.get(Uri.parse('$apiBase/api/settings'),
+        headers: {'Authorization': 'Bearer $pass'});
+    if (r.statusCode == 401) throw 'Clave incorrecta';
+    return jsonDecode(r.body);
+  }
+
+  static Future<Map<String, dynamic>> updateSettings(String pass, Map<String, dynamic> data) async {
+    final r = await http.put(Uri.parse('$apiBase/api/settings'),
+        headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
+        body: jsonEncode(data));
+    if (r.statusCode == 401) throw 'Clave incorrecta';
+    return jsonDecode(r.body);
+  }
 }

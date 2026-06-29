@@ -1,6 +1,6 @@
 const express = require('express');
 const path = require('path');
-const { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, stats, listCustomers } = require('./db');
+const { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, stats, listCustomers, getSetting, setSetting } = require('./db');
 
 const PORT = process.env.PORT || 3000;
 const BUSINESS = process.env.BUSINESS_NAME || 'Mi Negocio';
@@ -14,8 +14,18 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+function cfg(key, envFallback) {
+  return getSetting(db, key, envFallback);
+}
+
 app.get('/api/config', (req, res) =>
-  res.json({ business: BUSINESS, primary_color: PRIMARY_COLOR, logo_url: LOGO_URL, cycle_days: CYCLE_DAYS, reward_tiers: getRewardTiers(db) }));
+  res.json({
+    business:      cfg('business', BUSINESS),
+    primary_color: cfg('primary_color', PRIMARY_COLOR),
+    logo_url:      cfg('logo_url', LOGO_URL),
+    cycle_days:    Number(cfg('cycle_days', CYCLE_DAYS)),
+    reward_tiers:  getRewardTiers(db),
+  }));
 
 app.post('/api/join', (req, res) => {
   try {
@@ -26,7 +36,7 @@ app.post('/api/join', (req, res) => {
 app.get('/api/card', (req, res) => {
   const c = db.prepare('SELECT name, stamps, total_rewards, cycle_start FROM customers WHERE token=?').get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
-  res.json({ ...c, business: BUSINESS, reward_tiers: getRewardTiers(db), cycle_days: CYCLE_DAYS });
+  res.json({ ...c, business: cfg('business', BUSINESS), reward_tiers: getRewardTiers(db), cycle_days: Number(cfg('cycle_days', CYCLE_DAYS)) });
 });
 
 function staff(req, res, next) {
@@ -36,8 +46,31 @@ function staff(req, res, next) {
 }
 
 app.post('/api/stamp', staff, (req, res) => {
-  try { res.json(addStamp(db, req.body.token, CYCLE_DAYS)); }
+  try { res.json(addStamp(db, req.body.token, Number(cfg('cycle_days', CYCLE_DAYS)))); }
   catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Configuración del negocio (lectura y escritura)
+app.get('/api/settings', staff, (req, res) => {
+  res.json({
+    business:      cfg('business', BUSINESS),
+    primary_color: cfg('primary_color', PRIMARY_COLOR),
+    logo_url:      cfg('logo_url', LOGO_URL),
+    cycle_days:    Number(cfg('cycle_days', CYCLE_DAYS)),
+  });
+});
+
+app.put('/api/settings', staff, (req, res) => {
+  const allowed = ['business', 'primary_color', 'logo_url', 'cycle_days'];
+  for (const key of allowed) {
+    if (req.body[key] !== undefined) setSetting(db, key, String(req.body[key]));
+  }
+  res.json({
+    business:      cfg('business', BUSINESS),
+    primary_color: cfg('primary_color', PRIMARY_COLOR),
+    logo_url:      cfg('logo_url', LOGO_URL),
+    cycle_days:    Number(cfg('cycle_days', CYCLE_DAYS)),
+  });
 });
 
 // CRUD recompensas (solo personal/dueño)

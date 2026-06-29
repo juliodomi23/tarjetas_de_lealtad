@@ -34,7 +34,22 @@ function openDb(file = 'loyalty.db') {
     description     TEXT NOT NULL
   )`);
 
+  db.exec(`CREATE TABLE IF NOT EXISTS settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+  )`);
+
   return db;
+}
+
+function getSetting(db, key, fallback = '') {
+  const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+  return row ? row.value : fallback;
+}
+
+function setSetting(db, key, value) {
+  db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
+    .run(key, value);
 }
 
 const normPhone = p => String(p).replace(/\D/g, '');
@@ -128,4 +143,4 @@ function listCustomers(db) {
     FROM customers ORDER BY created_at DESC`).all();
 }
 
-module.exports = { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, normPhone, stats, listCustomers };
+module.exports = { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, normPhone, stats, listCustomers, getSetting, setSetting };

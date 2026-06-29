@@ -445,6 +445,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Map<String, dynamic>? _stats;
   List<dynamic>? _customers;
   List<RewardTier> _tiers = [];
+  Map<String, dynamic>? _settings;
   String? _error;
   bool _loading = true;
   String _search = '';
@@ -462,11 +463,13 @@ class _AdminScreenState extends State<AdminScreen> {
         Api.adminStats(widget.pass),
         Api.adminCustomers(widget.pass),
         Api.getRewardTiers(widget.pass),
+        Api.getSettings(widget.pass),
       ]);
       setState(() {
         _stats = results[0] as Map<String, dynamic>;
         _customers = results[1] as List<dynamic>;
         _tiers = results[2] as List<RewardTier>;
+        _settings = results[3] as Map<String, dynamic>;
         _loading = false;
       });
     } catch (e) {
@@ -477,6 +480,11 @@ class _AdminScreenState extends State<AdminScreen> {
   Future<void> _refreshTiers() async {
     final tiers = await Api.getRewardTiers(widget.pass);
     setState(() => _tiers = tiers);
+  }
+
+  Future<void> _refreshSettings() async {
+    final s = await Api.getSettings(widget.pass);
+    setState(() => _settings = s);
   }
 
   void _showTierDialog({RewardTier? tier}) {
@@ -540,6 +548,13 @@ class _AdminScreenState extends State<AdminScreen> {
                       const SizedBox(height: 20),
                       _ActivityChart(daily: List<Map>.from(_stats!['daily'] ?? [])),
                       const SizedBox(height: 20),
+                      if (_settings != null)
+                        _SettingsForm(
+                          settings: _settings!,
+                          pass: widget.pass,
+                          onSaved: _refreshSettings,
+                        ),
+                      const SizedBox(height: 20),
                       _TiersManager(
                         tiers: _tiers,
                         pass: widget.pass,
@@ -559,6 +574,126 @@ class _AdminScreenState extends State<AdminScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+}
+
+// ─── Settings form ───────────────────────────────────────────────────────────
+
+class _SettingsForm extends StatefulWidget {
+  final Map<String, dynamic> settings;
+  final String pass;
+  final VoidCallback onSaved;
+  const _SettingsForm({required this.settings, required this.pass, required this.onSaved});
+  @override
+  State<_SettingsForm> createState() => _SettingsFormState();
+}
+
+class _SettingsFormState extends State<_SettingsForm> {
+  late final TextEditingController _business;
+  late final TextEditingController _color;
+  late final TextEditingController _logo;
+  late final TextEditingController _cycle;
+  bool _saving = false;
+  String? _msg;
+
+  @override
+  void initState() {
+    super.initState();
+    _business = TextEditingController(text: widget.settings['business'] ?? '');
+    _color    = TextEditingController(text: widget.settings['primary_color'] ?? '');
+    _logo     = TextEditingController(text: widget.settings['logo_url'] ?? '');
+    _cycle    = TextEditingController(text: '${widget.settings['cycle_days'] ?? 30}');
+  }
+
+  @override
+  void dispose() {
+    _business.dispose(); _color.dispose(); _logo.dispose(); _cycle.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    setState(() { _saving = true; _msg = null; });
+    try {
+      await Api.updateSettings(widget.pass, {
+        'business':      _business.text.trim(),
+        'primary_color': _color.text.trim(),
+        'logo_url':      _logo.text.trim(),
+        'cycle_days':    int.tryParse(_cycle.text) ?? 30,
+      });
+      setState(() => _msg = 'Guardado ✓');
+      widget.onSaved();
+    } catch (e) {
+      setState(() => _msg = e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: line),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('Configuración del negocio',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 14),
+          _Field(ctrl: _business, label: 'Nombre del negocio', icon: Icons.store_outlined),
+          const SizedBox(height: 10),
+          _Field(ctrl: _color, label: 'Color principal (hex, ej: #E23B3B)', icon: Icons.palette_outlined),
+          const SizedBox(height: 10),
+          _Field(ctrl: _logo, label: 'URL del logo (opcional)', icon: Icons.image_outlined),
+          const SizedBox(height: 10),
+          _Field(ctrl: _cycle, label: 'Duración del ciclo (días)', icon: Icons.timer_outlined,
+              keyboardType: TextInputType.number),
+          if (_msg != null) ...[
+            const SizedBox(height: 10),
+            Text(_msg!,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: _msg!.contains('✓') ? success : brand,
+                    fontWeight: FontWeight.w500)),
+          ],
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            onPressed: _saving ? null : _save,
+            icon: _saving
+                ? const SizedBox(width: 16, height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                : const Icon(Icons.save_outlined, size: 18),
+            label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
+            style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 46)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Field extends StatelessWidget {
+  final TextEditingController ctrl;
+  final String label;
+  final IconData icon;
+  final TextInputType? keyboardType;
+  const _Field({required this.ctrl, required this.label, required this.icon, this.keyboardType});
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: ctrl,
+      keyboardType: keyboardType,
+      style: const TextStyle(fontSize: 14),
+      decoration: InputDecoration(
+        hintText: label,
+        prefixIcon: Icon(icon, color: muted, size: 20),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      ),
     );
   }
 }
