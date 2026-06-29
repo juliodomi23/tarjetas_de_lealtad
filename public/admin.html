@@ -158,7 +158,7 @@
   <!-- Configuración + Tiers -->
   <div class="settings-grid">
     <div class="panel">
-      <h2>⚙️ Configuración del negocio</h2>
+      <h2>Configuración del negocio</h2>
       <div class="field"><label>Nombre del negocio</label><input id="s-business" type="text" placeholder="Mi Negocio"></div>
       <div class="field"><label>Color principal (hex)</label><input id="s-color" type="text" placeholder="#E23B3B" maxlength="7"></div>
       <div class="field"><label>URL del logo (opcional)</label><input id="s-logo" type="url" placeholder="https://..."></div>
@@ -170,7 +170,7 @@
     </div>
 
     <div class="panel">
-      <h2>🎁 Recompensas</h2>
+      <h2>Recompensas</h2>
       <ul class="tier-list" id="tier-list"><li class="state"><span class="spin"></span></li></ul>
       <div class="tier-form">
         <input type="number" id="t-stamps" min="1" placeholder="Sellos" title="Sellos requeridos">
@@ -322,8 +322,8 @@
         <span class="tier-badge">${t.stamps_required} ★</span>
         <span class="tier-desc">${t.description}</span>
         <span class="tier-actions">
-          <button onclick="editTier(${t.id},'${t.stamps_required}','${t.description.replace(/'/g,"\\'")}')">✏️</button>
-          <button class="del" onclick="deleteTier(${t.id})">🗑️</button>
+          <button onclick="editTier(${t.id},'${t.stamps_required}','${t.description.replace(/'/g,"\\'")}')">Editar</button>
+          <button class="del" onclick="deleteTier(${t.id})">Eliminar</button>
         </span>
       </li>`).join('');
   }

@@ -14,9 +14,12 @@ const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+const settingsCache = new Map();
 function cfg(key, envFallback) {
-  return getSetting(db, key, envFallback);
+  if (!settingsCache.has(key)) settingsCache.set(key, getSetting(db, key, envFallback));
+  return settingsCache.get(key);
 }
+function invalidateSettings() { settingsCache.clear(); }
 
 app.get('/api/config', (req, res) =>
   res.json({
@@ -65,6 +68,7 @@ app.put('/api/settings', staff, (req, res) => {
   for (const key of allowed) {
     if (req.body[key] !== undefined) setSetting(db, key, String(req.body[key]));
   }
+  invalidateSettings();
   res.json({
     business:      cfg('business', BUSINESS),
     primary_color: cfg('primary_color', PRIMARY_COLOR),
@@ -83,8 +87,10 @@ app.post('/api/reward-tiers', staff, (req, res) => {
 });
 
 app.put('/api/reward-tiers/:id', staff, (req, res) => {
-  const { stamps_required, description } = req.body;
-  res.json(updateRewardTier(db, req.params.id, Number(stamps_required), description));
+  const stamps_required = Number(req.body.stamps_required);
+  const { description } = req.body;
+  if (!stamps_required || !description) return res.status(400).json({ error: 'Faltan campos' });
+  res.json(updateRewardTier(db, req.params.id, stamps_required, description));
 });
 
 app.delete('/api/reward-tiers/:id', staff, (req, res) =>

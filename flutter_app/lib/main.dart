@@ -397,7 +397,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white))
                   else ...[
                     if (_reset)
-                      const Text('¡Ciclo completado! 🎉', textAlign: TextAlign.center,
+                      const Text('¡Ciclo completado!', textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
                     if (_earned.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -477,16 +477,6 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
-  Future<void> _refreshTiers() async {
-    final tiers = await Api.getRewardTiers(widget.pass);
-    setState(() => _tiers = tiers);
-  }
-
-  Future<void> _refreshSettings() async {
-    final s = await Api.getSettings(widget.pass);
-    setState(() => _settings = s);
-  }
-
   void _showTierDialog({RewardTier? tier}) {
     final stampsCtrl = TextEditingController(text: tier != null ? '${tier.stampsRequired}' : '');
     final descCtrl = TextEditingController(text: tier?.description ?? '');
@@ -512,12 +502,10 @@ class _AdminScreenState extends State<AdminScreen> {
               final desc = descCtrl.text.trim();
               if (stamps <= 0 || desc.isEmpty) return;
               Navigator.pop(context);
-              if (tier == null) {
-                await Api.addRewardTier(widget.pass, stamps, desc);
-              } else {
-                await Api.updateRewardTier(widget.pass, tier.id, stamps, desc);
-              }
-              await _refreshTiers();
+              final tiers = tier == null
+                  ? await Api.addRewardTier(widget.pass, stamps, desc)
+                  : await Api.updateRewardTier(widget.pass, tier.id, stamps, desc);
+              setState(() => _tiers = tiers);
             },
             child: const Text('Guardar'),
           ),
@@ -552,7 +540,20 @@ class _AdminScreenState extends State<AdminScreen> {
                         _SettingsForm(
                           settings: _settings!,
                           pass: widget.pass,
-                          onSaved: _refreshSettings,
+                          onSaved: (updated) {
+                            setState(() => _settings = updated);
+                            final raw = (updated['primary_color'] as String? ?? '').replaceAll('#', '');
+                            _cfg = AppConfig(
+                              business: updated['business'] ?? _cfg.business,
+                              primaryColor: raw.length == 6
+                                  ? Color(int.parse('FF$raw', radix: 16))
+                                  : _cfg.primaryColor,
+                              logoUrl: updated['logo_url'] ?? _cfg.logoUrl,
+                              cycleDays: (updated['cycle_days'] as num?)?.toInt() ?? _cfg.cycleDays,
+                              rewardTiers: _cfg.rewardTiers,
+                            );
+                            brand = _cfg.primaryColor;
+                          },
                         ),
                       const SizedBox(height: 20),
                       _TiersManager(
@@ -561,8 +562,8 @@ class _AdminScreenState extends State<AdminScreen> {
                         onAdd: () => _showTierDialog(),
                         onEdit: (t) => _showTierDialog(tier: t),
                         onDelete: (t) async {
-                          await Api.deleteRewardTier(widget.pass, t.id);
-                          await _refreshTiers();
+                          final tiers = await Api.deleteRewardTier(widget.pass, t.id);
+                          setState(() => _tiers = tiers);
                         },
                       ),
                       const SizedBox(height: 20),
@@ -583,7 +584,7 @@ class _AdminScreenState extends State<AdminScreen> {
 class _SettingsForm extends StatefulWidget {
   final Map<String, dynamic> settings;
   final String pass;
-  final VoidCallback onSaved;
+  final void Function(Map<String, dynamic>) onSaved;
   const _SettingsForm({required this.settings, required this.pass, required this.onSaved});
   @override
   State<_SettingsForm> createState() => _SettingsFormState();
@@ -615,14 +616,14 @@ class _SettingsFormState extends State<_SettingsForm> {
   Future<void> _save() async {
     setState(() { _saving = true; _msg = null; });
     try {
-      await Api.updateSettings(widget.pass, {
+      final updated = await Api.updateSettings(widget.pass, {
         'business':      _business.text.trim(),
         'primary_color': _color.text.trim(),
         'logo_url':      _logo.text.trim(),
         'cycle_days':    int.tryParse(_cycle.text) ?? 30,
       });
-      setState(() => _msg = 'Guardado ✓');
-      widget.onSaved();
+      setState(() => _msg = 'Guardado');
+      widget.onSaved(updated);
     } catch (e) {
       setState(() => _msg = e.toString());
     } finally {
@@ -1092,11 +1093,12 @@ class _CustomerList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final q = search.toLowerCase();
     final filtered = search.isEmpty
         ? customers
         : customers.where((c) =>
-            (c['name'] as String).toLowerCase().contains(search.toLowerCase()) ||
-            (c['phone'] as String).contains(search)).toList();
+            (c['name'] as String).toLowerCase().contains(q) ||
+            (c['phone'] as String).contains(q)).toList();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [

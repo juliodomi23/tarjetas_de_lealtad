@@ -83,6 +83,11 @@ function deleteRewardTier(db, id) {
   return getRewardTiers(db);
 }
 
+// SQLite datetime('now') devuelve 'YYYY-MM-DD HH:MM:SS' sin zona — tratar como UTC.
+function parseDbDate(s) {
+  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+}
+
 function addStamp(db, token, cycleDays) {
   const c = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
   if (!c) throw new Error('Cliente no encontrado');
@@ -90,11 +95,10 @@ function addStamp(db, token, cycleDays) {
   const tiers = getRewardTiers(db);
   const maxStamps = tiers.length > 0 ? Math.max(...tiers.map(t => t.stamps_required)) : 0;
 
-  // Verificar si el ciclo expiró
   let currentStamps = c.stamps;
   let cycleStart = c.cycle_start || c.created_at;
   if (cycleDays > 0) {
-    const msElapsed = Date.now() - new Date(cycleStart).getTime();
+    const msElapsed = Date.now() - parseDbDate(cycleStart).getTime();
     const daysElapsed = msElapsed / (1000 * 60 * 60 * 24);
     if (daysElapsed >= cycleDays) {
       currentStamps = 0;
