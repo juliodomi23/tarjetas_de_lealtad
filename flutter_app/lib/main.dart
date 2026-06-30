@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -7,15 +8,25 @@ import 'package:url_launcher/url_launcher.dart';
 import 'api.dart';
 import 'theme.dart';
 
-AppConfig _cfg = AppConfig.fallback();
+List<LoyaltyCard> _cards = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    _cfg = await Api.config();
-    brand = _cfg.primaryColor;
-  } catch (_) {}
+  final prefs = await SharedPreferences.getInstance();
+  final raw = prefs.getString('cards');
+  if (raw != null) {
+    try {
+      _cards = (jsonDecode(raw) as List).map((c) => LoyaltyCard.fromJson(c)).toList();
+    } catch (_) {}
+  }
+  if (_cards.isNotEmpty) brand = _cards.first.business.primaryColor;
   runApp(const App());
+}
+
+Future<void> _saveCards(List<LoyaltyCard> cards) async {
+  final prefs = await SharedPreferences.getInstance();
+  await prefs.setString('cards', jsonEncode(cards.map((c) => c.toJson()).toList()));
+  _cards = cards;
 }
 
 class App extends StatelessWidget {
@@ -23,163 +34,173 @@ class App extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Tarjeta de lealtad',
+      title: 'Tarjetas de lealtad',
       debugShowCheckedModeBanner: false,
       theme: buildTheme(),
-      home: const Gate(),
+      home: const HomeScreen(),
     );
   }
 }
 
-class Gate extends StatefulWidget {
-  const Gate({super.key});
+// ─── Home ─────────────────────────────────────────────────────────────────────
+
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({super.key});
   @override
-  State<Gate> createState() => _GateState();
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _GateState extends State<Gate> {
-  String? _token;
-  bool _loaded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((p) {
-      setState(() {
-        _token = p.getString('token');
-        _loaded = true;
-      });
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_loaded) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    return _token == null ? const JoinScreen() : CardScreen(token: _token!);
-  }
-}
-
-// ─── Join ────────────────────────────────────────────────────────────────────
-
-class JoinScreen extends StatefulWidget {
-  const JoinScreen({super.key});
-  @override
-  State<JoinScreen> createState() => _JoinScreenState();
-}
-
-class _JoinScreenState extends State<JoinScreen> {
-  final _name = TextEditingController();
-  final _phone = TextEditingController();
-  final String _biz = _cfg.business;
-  String? _error;
-  bool _busy = false;
+class _HomeScreenState extends State<HomeScreen> {
+  List<LoyaltyCard> _localCards = List.from(_cards);
+  final _page = PageController();
 
   @override
   void dispose() {
-    _name.dispose();
-    _phone.dispose();
+    _page.dispose();
     super.dispose();
   }
 
-  Future<void> _submit() async {
-    final name = _name.text.trim();
-    final phone = _phone.text.trim();
-    if (name.isEmpty) return setState(() => _error = 'Escribe tu nombre.');
-    if (phone.length != 10) return setState(() => _error = 'El WhatsApp debe tener 10 dígitos.');
-    setState(() { _busy = true; _error = null; });
-    try {
-      final token = await Api.join(phone, name);
-      final p = await SharedPreferences.getInstance();
-      await p.setString('token', token);
-      if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (_) => CardScreen(token: token)));
-    } catch (e) {
-      setState(() => _error = e.toString());
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
+  void _addCard(LoyaltyCard lcard) {
+    final updated = [..._localCards, lcard];
+    _saveCards(updated);
+    setState(() => _localCards = updated);
+    brand = lcard.business.primaryColor;
+  }
+
+  void _removeCard(int index) {
+    final updated = List<LoyaltyCard>.from(_localCards)..removeAt(index);
+    _saveCards(updated);
+    setState(() => _localCards = updated);
+  }
+
+  Future<void> _goAddBusiness() async {
+    final lcard = await Navigator.push<LoyaltyCard>(
+        context, MaterialPageRoute(builder: (_) => const BusinessPickerScreen()));
+    if (lcard != null) _addCard(lcard);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const _BrandBadge(),
-                const SizedBox(height: 24),
-                Text(_biz, textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 6),
-                const Text('Regístrate con tu WhatsApp y empieza a juntar sellos.',
-                    textAlign: TextAlign.center, style: TextStyle(color: muted, height: 1.5)),
-                const SizedBox(height: 28),
-                _WhiteCard(
-                  child: Column(
-                    children: [
-                      TextField(
-                          controller: _name,
-                          textCapitalization: TextCapitalization.words,
-                          decoration: const InputDecoration(
-                              hintText: 'Tu nombre',
-                              prefixIcon: Icon(Icons.person_outline, color: muted))),
-                      const SizedBox(height: 14),
-                      TextField(
-                          controller: _phone,
-                          keyboardType: TextInputType.phone,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                            LengthLimitingTextInputFormatter(10),
-                          ],
-                          onSubmitted: (_) => _busy ? null : _submit(),
-                          decoration: const InputDecoration(
-                              hintText: 'WhatsApp (10 dígitos)',
-                              prefixIcon: Icon(Icons.phone_outlined, color: muted))),
-                      if (_error != null) ...[
-                        const SizedBox(height: 14),
-                        _ErrorBanner(_error!),
-                      ],
-                      const SizedBox(height: 20),
-                      FilledButton.icon(
-                        onPressed: _busy ? null : _submit,
-                        icon: _busy
-                            ? const SizedBox(width: 18, height: 18,
-                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                            : const Icon(Icons.card_membership),
-                        label: Text(_busy ? 'Creando...' : 'Crear mi tarjeta'),
-                      ),
-                    ],
+    if (_localCards.isEmpty) {
+      return Scaffold(
+        body: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 80, height: 80,
+                    decoration: BoxDecoration(
+                      color: brand, borderRadius: BorderRadius.circular(24),
+                      boxShadow: [BoxShadow(color: brand.withValues(alpha: 0.35), blurRadius: 24, offset: const Offset(0, 10))],
+                    ),
+                    child: const Icon(Icons.loyalty, color: Colors.white, size: 42),
                   ),
-                ),
-                const SizedBox(height: 8),
-                TextButton.icon(
-                  onPressed: () => Navigator.push(context,
-                      MaterialPageRoute(builder: (_) => const ScannerScreen())),
-                  icon: const Icon(Icons.qr_code_scanner, size: 18, color: muted),
-                  label: const Text('Soy del personal', style: TextStyle(color: muted)),
-                ),
-              ],
+                  const SizedBox(height: 24),
+                  const Text('Tus tarjetas de lealtad', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700), textAlign: TextAlign.center),
+                  const SizedBox(height: 8),
+                  const Text('Regístrate en un negocio para empezar a acumular sellos y ganar premios.', textAlign: TextAlign.center, style: TextStyle(color: muted, height: 1.5)),
+                  const SizedBox(height: 32),
+                  FilledButton.icon(
+                    onPressed: _goAddBusiness,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Agregar negocio'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())),
+                    icon: const Icon(Icons.qr_code_scanner, size: 18, color: muted),
+                    label: const Text('Soy del personal', style: TextStyle(color: muted)),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: surface,
+      appBar: AppBar(
+        title: Text('Mis tarjetas (${_localCards.length})', style: const TextStyle(fontSize: 16)),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.qr_code_scanner),
+            tooltip: 'Personal',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())),
+          ),
+        ],
+      ),
+      body: PageView.builder(
+        controller: _page,
+        itemCount: _localCards.length,
+        itemBuilder: (_, i) => _CardPage(
+          lcard: _localCards[i],
+          onRemove: () {
+            showDialog(
+              context: context,
+              builder: (_) => AlertDialog(
+                title: const Text('Eliminar tarjeta'),
+                content: Text('¿Quieres eliminar tu tarjeta de ${_localCards[i].business.name}?'),
+                actions: [
+                  TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+                  FilledButton(
+                    onPressed: () { Navigator.pop(context); _removeCard(i); },
+                    child: const Text('Eliminar'),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+      ),
+      bottomNavigationBar: _localCards.length > 1
+          ? Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(_localCards.length, (i) => AnimatedBuilder(
+                  animation: _page,
+                  builder: (_, __) {
+                    final cur = _page.hasClients ? (_page.page ?? 0).round() : 0;
+                    return Container(
+                      width: cur == i ? 20 : 8,
+                      height: 8,
+                      margin: const EdgeInsets.symmetric(horizontal: 3),
+                      decoration: BoxDecoration(
+                        color: cur == i ? brand : line,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                    );
+                  },
+                )),
+              ),
+            )
+          : null,
+      floatingActionButton: FloatingActionButton(
+        onPressed: _goAddBusiness,
+        backgroundColor: brand,
+        foregroundColor: Colors.white,
+        child: const Icon(Icons.add),
       ),
     );
   }
 }
 
-// ─── Card ────────────────────────────────────────────────────────────────────
+// ─── CardPage ─────────────────────────────────────────────────────────────────
 
-class CardScreen extends StatefulWidget {
-  final String token;
-  const CardScreen({super.key, required this.token});
+class _CardPage extends StatefulWidget {
+  final LoyaltyCard lcard;
+  final VoidCallback onRemove;
+  const _CardPage({required this.lcard, required this.onRemove});
   @override
-  State<CardScreen> createState() => _CardScreenState();
+  State<_CardPage> createState() => _CardPageState();
 }
 
-class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
+class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
   Map<String, dynamic>? _data;
 
   @override
@@ -196,68 +217,246 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) _load();
+  void didChangeAppLifecycleState(AppLifecycleState s) {
+    if (s == AppLifecycleState.resumed) _load();
   }
 
   Future<void> _load() async {
     try {
-      final d = await Api.card(widget.token);
+      final d = await Api.card(widget.lcard.token);
       if (mounted) setState(() => _data = d);
     } catch (_) {}
   }
 
   @override
   Widget build(BuildContext context) {
+    final biz = widget.lcard.business;
     final d = _data;
-    if (d == null) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-
-    final int stamps = d['stamps'] ?? 0;
-    final tiers = (d['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList();
-    final int cycleDays = d['cycle_days'] ?? 30;
-    final cycleStart = DateTime.tryParse(d['cycle_start'] ?? '') ?? DateTime.now();
+    final stamps = d?['stamps'] as int? ?? 0;
+    final tiers = d != null
+        ? (d['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList()
+        : biz.rewardTiers;
+    final cycleDays = d?['cycle_days'] as int? ?? biz.cycleDays;
+    final cycleStart = DateTime.tryParse(d?['cycle_start'] ?? '') ?? DateTime.now();
     final cycleEnd = cycleStart.add(Duration(days: cycleDays));
     final maxStamps = tiers.isEmpty ? 0 : tiers.map((t) => t.stampsRequired).reduce((a, b) => a > b ? a : b);
 
-    return Scaffold(
-      body: SafeArea(
-        child: RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
-            padding: const EdgeInsets.all(20),
-            children: [
-              _LoyaltyCard(
-                business: d['business'] ?? _cfg.business,
-                name: d['name'] ?? '',
-                token: widget.token,
-                stamps: stamps,
-                maxStamps: maxStamps,
-              ),
-              const SizedBox(height: 16),
-              _CycleInfo(cycleEnd: cycleEnd),
-              const SizedBox(height: 16),
-              _WhiteCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+    return RefreshIndicator(
+      onRefresh: _load,
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          _VisualCard(
+            businessName: biz.name,
+            name: d?['name'] ?? '',
+            token: widget.lcard.token,
+            stamps: stamps,
+            maxStamps: maxStamps,
+            color: biz.primaryColor,
+            logoUrl: biz.logoUrl,
+          ),
+          const SizedBox(height: 16),
+          _CycleInfo(cycleEnd: cycleEnd),
+          const SizedBox(height: 16),
+          _WhiteCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Tus sellos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                        Text('$stamps${maxStamps > 0 ? ' / $maxStamps' : ''}',
-                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: brand)),
-                      ],
-                    ),
-                    if (maxStamps > 0) ...[
-                      const SizedBox(height: 12),
-                      _StampGrid(stamps: stamps, maxStamps: maxStamps, tiers: tiers),
-                    ],
+                    const Text('Tus sellos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                    Text('$stamps${maxStamps > 0 ? ' / $maxStamps' : ''}',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: biz.primaryColor)),
                   ],
                 ),
-              ),
-              const SizedBox(height: 16),
-              _RewardList(tiers: tiers, stamps: stamps),
-            ],
+                if (maxStamps > 0) ...[
+                  const SizedBox(height: 12),
+                  _StampGrid(stamps: stamps, maxStamps: maxStamps, tiers: tiers, color: biz.primaryColor),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          _RewardList(tiers: tiers, stamps: stamps, color: biz.primaryColor),
+          const SizedBox(height: 16),
+          TextButton(
+            onPressed: widget.onRemove,
+            child: const Text('Eliminar esta tarjeta', style: TextStyle(color: muted, fontSize: 12)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Business Picker ──────────────────────────────────────────────────────────
+
+class BusinessPickerScreen extends StatefulWidget {
+  const BusinessPickerScreen({super.key});
+  @override
+  State<BusinessPickerScreen> createState() => _BusinessPickerScreenState();
+}
+
+class _BusinessPickerScreenState extends State<BusinessPickerScreen> {
+  List<Business>? _businesses;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final list = await Api.listBusinesses();
+      setState(() { _businesses = list; _error = null; });
+    } catch (_) {
+      setState(() => _error = 'No se pudo cargar la lista de negocios.');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Elige un negocio')),
+      body: _error != null
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              Text(_error!, style: TextStyle(color: brand)),
+              const SizedBox(height: 12),
+              FilledButton(onPressed: _load, child: const Text('Reintentar')),
+            ]))
+          : _businesses == null
+              ? const Center(child: CircularProgressIndicator())
+              : _businesses!.isEmpty
+                  ? const Center(child: Text('No hay negocios disponibles.', style: TextStyle(color: muted)))
+                  : ListView.separated(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: _businesses!.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, i) {
+                        final b = _businesses![i];
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(16),
+                          onTap: () async {
+                            final lcard = await Navigator.push<LoyaltyCard>(
+                                context, MaterialPageRoute(builder: (_) => JoinScreen(business: b)));
+                            if (lcard != null && mounted) Navigator.pop(context, lcard);
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line),
+                            ),
+                            child: Row(children: [
+                              Container(
+                                width: 48, height: 48,
+                                decoration: BoxDecoration(color: b.primaryColor, borderRadius: BorderRadius.circular(14)),
+                                child: b.logoUrl.isNotEmpty
+                                    ? ClipRRect(borderRadius: BorderRadius.circular(14),
+                                        child: Image.network(b.logoUrl, fit: BoxFit.cover,
+                                            errorBuilder: (_, __, ___) => const Icon(Icons.loyalty, color: Colors.white)))
+                                    : const Icon(Icons.loyalty, color: Colors.white),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(child: Text(b.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600))),
+                              const Icon(Icons.chevron_right, color: muted),
+                            ]),
+                          ),
+                        );
+                      },
+                    ),
+    );
+  }
+}
+
+// ─── Join ─────────────────────────────────────────────────────────────────────
+
+class JoinScreen extends StatefulWidget {
+  final Business business;
+  const JoinScreen({super.key, required this.business});
+  @override
+  State<JoinScreen> createState() => _JoinScreenState();
+}
+
+class _JoinScreenState extends State<JoinScreen> {
+  final _name = TextEditingController();
+  final _phone = TextEditingController();
+  String? _error;
+  bool _busy = false;
+
+  @override
+  void dispose() { _name.dispose(); _phone.dispose(); super.dispose(); }
+
+  Future<void> _submit() async {
+    final name = _name.text.trim();
+    final phone = _phone.text.trim();
+    if (name.isEmpty) return setState(() => _error = 'Escribe tu nombre.');
+    if (phone.length != 10) return setState(() => _error = 'El WhatsApp debe tener 10 dígitos.');
+    setState(() { _busy = true; _error = null; });
+    try {
+      final lcard = await Api.join(widget.business.slug, phone, name);
+      if (mounted) Navigator.pop(context, lcard);
+    } catch (e) {
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final b = widget.business;
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 72, height: 72,
+                  decoration: BoxDecoration(
+                    color: b.primaryColor, borderRadius: BorderRadius.circular(20),
+                    boxShadow: [BoxShadow(color: b.primaryColor.withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 8))],
+                  ),
+                  child: b.logoUrl.isNotEmpty
+                      ? ClipRRect(borderRadius: BorderRadius.circular(20),
+                          child: Image.network(b.logoUrl, fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => const Icon(Icons.loyalty, color: Colors.white, size: 38)))
+                      : const Icon(Icons.loyalty, color: Colors.white, size: 38),
+                ),
+                const SizedBox(height: 20),
+                Text(b.name, textAlign: TextAlign.center, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 6),
+                const Text('Regístrate para empezar a juntar sellos.', textAlign: TextAlign.center, style: TextStyle(color: muted, height: 1.5)),
+                const SizedBox(height: 24),
+                _WhiteCard(child: Column(children: [
+                  TextField(
+                      controller: _name,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(hintText: 'Tu nombre', prefixIcon: Icon(Icons.person_outline, color: muted))),
+                  const SizedBox(height: 14),
+                  TextField(
+                      controller: _phone,
+                      keyboardType: TextInputType.phone,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                      onSubmitted: (_) => _busy ? null : _submit(),
+                      decoration: const InputDecoration(hintText: 'WhatsApp (10 dígitos)', prefixIcon: Icon(Icons.phone_outlined, color: muted))),
+                  if (_error != null) ...[const SizedBox(height: 14), _ErrorBanner(_error!)],
+                  const SizedBox(height: 20),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : _submit,
+                    icon: _busy
+                        ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Icon(Icons.card_membership),
+                    label: Text(_busy ? 'Creando...' : 'Crear mi tarjeta'),
+                  ),
+                ])),
+              ],
+            ),
           ),
         ),
       ),
@@ -265,7 +464,7 @@ class _CardScreenState extends State<CardScreen> with WidgetsBindingObserver {
   }
 }
 
-// ─── Scanner ─────────────────────────────────────────────────────────────────
+// ─── Scanner ──────────────────────────────────────────────────────────────────
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({super.key});
@@ -275,72 +474,106 @@ class ScannerScreen extends StatefulWidget {
 
 class _ScannerScreenState extends State<ScannerScreen> {
   String? _pass;
+  String? _staffSlug;
   List<RewardTier> _earned = [];
   String _error = '';
-  bool _busy = false;
+  bool _scanning = false;
+  bool _showResult = false;
   bool _reset = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _ensurePass());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _ensureLogin());
   }
 
-  Future<void> _ensurePass() async {
+  Future<void> _ensureLogin() async {
     final p = await SharedPreferences.getInstance();
     _pass = p.getString('staffPass');
-    if (_pass == null && mounted) {
-      final entered = await _askPass();
-      if (entered != null && entered.isNotEmpty) {
-        await p.setString('staffPass', entered);
-        setState(() => _pass = entered);
-      } else if (mounted) {
-        Navigator.pop(context);
-      }
+    _staffSlug = p.getString('staffSlug');
+    if (_pass == null || _staffSlug == null) {
+      await _askLogin();
+    } else {
+      setState(() {});
     }
   }
 
-  Future<String?> _askPass() {
-    final c = TextEditingController();
-    return showDialog<String>(
+  Future<void> _askLogin() async {
+    List<Business> businesses = [];
+    try { businesses = await Api.listBusinesses(); } catch (_) {}
+    if (!mounted) return;
+
+    String? selectedSlug = _staffSlug ?? (businesses.isNotEmpty ? businesses.first.slug : null);
+    final passCtrl = TextEditingController(text: _pass ?? '');
+
+    await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => AlertDialog(
-        title: const Text('Clave del personal'),
-        content: TextField(controller: c, obscureText: true, autofocus: true),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, c.text), child: const Text('Entrar')),
-        ],
+      builder: (_) => StatefulBuilder(
+        builder: (ctx, setSt) => AlertDialog(
+          title: const Text('Acceso del personal'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            if (businesses.isNotEmpty)
+              DropdownButtonFormField<String>(
+                value: selectedSlug,
+                decoration: const InputDecoration(hintText: 'Negocio'),
+                items: businesses.map((b) => DropdownMenuItem(value: b.slug, child: Text(b.name))).toList(),
+                onChanged: (v) => setSt(() => selectedSlug = v),
+              ),
+            if (businesses.isEmpty)
+              TextField(
+                decoration: const InputDecoration(hintText: 'Slug del negocio'),
+                onChanged: (v) => selectedSlug = v,
+              ),
+            const SizedBox(height: 12),
+            TextField(controller: passCtrl, obscureText: true, decoration: const InputDecoration(hintText: 'Clave del personal')),
+          ]),
+          actions: [
+            TextButton(onPressed: () { Navigator.pop(ctx); Navigator.pop(context); }, child: const Text('Cancelar')),
+            FilledButton(
+              onPressed: () async {
+                if (selectedSlug == null || passCtrl.text.isEmpty) return;
+                final p = await SharedPreferences.getInstance();
+                await p.setString('staffSlug', selectedSlug!);
+                await p.setString('staffPass', passCtrl.text);
+                _staffSlug = selectedSlug;
+                _pass = passCtrl.text;
+                Navigator.pop(ctx);
+                setState(() {});
+              },
+              child: const Text('Entrar'),
+            ),
+          ],
+        ),
       ),
     );
   }
 
   Future<void> _onDetect(BarcodeCapture cap) async {
-    if (_busy || _pass == null) return;
+    if (_scanning || _showResult || _pass == null) return;
     final raw = cap.barcodes.firstOrNull?.rawValue;
     if (raw == null) return;
-    setState(() => _busy = true);
+    setState(() => _scanning = true);
     try {
       final d = await Api.stamp(raw, _pass!);
       final earnedList = (d['earned'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList();
-      setState(() {
-        _earned = earnedList;
-        _reset = d['reset'] == true;
-        _error = '';
-      });
+      setState(() { _earned = earnedList; _reset = d['reset'] == true; _error = ''; _showResult = true; });
     } catch (e) {
-      if (e == 'Clave incorrecta') {
+      if (e.toString() == 'Clave incorrecta') {
         final p = await SharedPreferences.getInstance();
-        await p.remove('staffPass');
-        _pass = null;
+        await p.remove('staffPass'); await p.remove('staffSlug');
+        _pass = null; _staffSlug = null;
       }
-      setState(() { _error = e.toString(); _earned = []; });
+      setState(() { _error = e.toString(); _showResult = true; });
+    } finally {
+      if (mounted) setState(() => _scanning = false);
     }
   }
 
+  void _next() => setState(() { _showResult = false; _earned = []; _error = ''; _reset = false; });
+
   @override
   Widget build(BuildContext context) {
-    final hasResult = _busy;
     return Scaffold(
       backgroundColor: Colors.black,
       extendBodyBehindAppBar: true,
@@ -348,20 +581,31 @@ class _ScannerScreenState extends State<ScannerScreen> {
         title: const Text('Sellar tarjeta', style: TextStyle(color: Colors.white)),
         foregroundColor: Colors.white,
         actions: [
-          if (_pass != null)
+          if (_pass != null && _staffSlug != null)
             IconButton(
               icon: const Icon(Icons.bar_chart_rounded),
-              tooltip: 'Panel del dueño',
+              tooltip: 'Panel del negocio',
               onPressed: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => AdminScreen(pass: _pass!))),
+                  MaterialPageRoute(builder: (_) => AdminScreen(slug: _staffSlug!, pass: _pass!))),
             ),
+          IconButton(
+            icon: const Icon(Icons.logout, size: 20),
+            tooltip: 'Cambiar negocio',
+            onPressed: () async {
+              final p = await SharedPreferences.getInstance();
+              await p.remove('staffPass'); await p.remove('staffSlug');
+              _pass = null; _staffSlug = null;
+              setState(() {});
+              _askLogin();
+            },
+          ),
         ],
       ),
       body: Stack(
         alignment: Alignment.center,
         children: [
           MobileScanner(onDetect: _onDetect),
-          if (!hasResult) ...[
+          if (!_showResult) ...[
             Container(
               width: 240, height: 240,
               decoration: BoxDecoration(
@@ -371,13 +615,12 @@ class _ScannerScreenState extends State<ScannerScreen> {
             ),
             const Positioned(
               bottom: 80,
-              child: Text('Apunta al código del cliente',
-                  style: TextStyle(color: Colors.white, fontSize: 16)),
+              child: Text('Apunta al código del cliente', style: TextStyle(color: Colors.white, fontSize: 16)),
             ),
           ],
-          if (hasResult)
+          if (_showResult)
             Container(
-              color: Colors.black.withValues(alpha: 0.9),
+              color: Colors.black.withValues(alpha: 0.92),
               alignment: Alignment.center,
               padding: const EdgeInsets.all(32),
               child: Column(
@@ -385,19 +628,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
                 children: [
                   Icon(
                     _error.isNotEmpty ? Icons.error_outline : Icons.check_circle,
-                    color: _error.isNotEmpty ? brand : success,
-                    size: 72,
+                    color: _error.isNotEmpty ? brand : success, size: 72,
                   ),
                   const SizedBox(height: 16),
                   if (_error.isNotEmpty)
                     Text(_error, textAlign: TextAlign.center,
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white))
                   else if (_earned.isEmpty && !_reset)
-                    const Text('¡Sello agregado!', textAlign: TextAlign.center,
+                    const Text('Sello agregado', textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: Colors.white))
                   else ...[
                     if (_reset)
-                      const Text('¡Ciclo completado!', textAlign: TextAlign.center,
+                      const Text('Ciclo completado', textAlign: TextAlign.center,
                           style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Colors.white)),
                     if (_earned.isNotEmpty) ...[
                       const SizedBox(height: 8),
@@ -405,21 +647,17 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       const SizedBox(height: 8),
                       ..._earned.map((t) => Padding(
                             padding: const EdgeInsets.symmetric(vertical: 4),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 20),
-                                const SizedBox(width: 8),
-                                Text(t.description,
-                                    style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-                              ],
-                            ),
+                            child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                              const Icon(Icons.workspace_premium, color: Color(0xFFFFD700), size: 20),
+                              const SizedBox(width: 8),
+                              Text(t.description, style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
+                            ]),
                           )),
                     ],
                   ],
                   const SizedBox(height: 28),
                   FilledButton.icon(
-                    onPressed: () => setState(() { _busy = false; _earned = []; _error = ''; _reset = false; }),
+                    onPressed: _next,
                     icon: const Icon(Icons.qr_code_scanner),
                     label: const Text('Siguiente cliente'),
                   ),
@@ -432,11 +670,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 }
 
-// ─── Admin ───────────────────────────────────────────────────────────────────
+// ─── Admin ────────────────────────────────────────────────────────────────────
 
 class AdminScreen extends StatefulWidget {
-  final String pass;
-  const AdminScreen({super.key, required this.pass});
+  final String slug, pass;
+  const AdminScreen({super.key, required this.slug, required this.pass});
   @override
   State<AdminScreen> createState() => _AdminScreenState();
 }
@@ -445,7 +683,7 @@ class _AdminScreenState extends State<AdminScreen> {
   Map<String, dynamic>? _stats;
   List<dynamic>? _customers;
   List<RewardTier> _tiers = [];
-  Map<String, dynamic>? _settings;
+  Business? _biz;
   String? _error;
   bool _loading = true;
   String _search = '';
@@ -460,17 +698,17 @@ class _AdminScreenState extends State<AdminScreen> {
     setState(() { _loading = true; _error = null; });
     try {
       final results = await Future.wait([
-        Api.adminStats(widget.pass),
-        Api.adminCustomers(widget.pass),
-        Api.getRewardTiers(widget.pass),
-        Api.getSettings(widget.pass),
+        Api.adminStats(widget.slug, widget.pass),
+        Api.adminCustomers(widget.slug, widget.pass),
+        Api.getRewardTiers(widget.slug, widget.pass),
+        Api.config(widget.slug),
       ]);
       setState(() {
-        _stats = results[0] as Map<String, dynamic>;
+        _stats     = results[0] as Map<String, dynamic>;
         _customers = results[1] as List<dynamic>;
-        _tiers = results[2] as List<RewardTier>;
-        _settings = results[3] as Map<String, dynamic>;
-        _loading = false;
+        _tiers     = results[2] as List<RewardTier>;
+        _biz       = results[3] as Business;
+        _loading   = false;
       });
     } catch (e) {
       setState(() { _error = e.toString(); _loading = false; });
@@ -484,16 +722,12 @@ class _AdminScreenState extends State<AdminScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: Text(tier == null ? 'Nueva recompensa' : 'Editar recompensa'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(controller: stampsCtrl, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(hintText: 'Sellos requeridos')),
-            const SizedBox(height: 12),
-            TextField(controller: descCtrl,
-                decoration: const InputDecoration(hintText: 'Descripción del premio')),
-          ],
-        ),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: stampsCtrl, keyboardType: TextInputType.number,
+              decoration: const InputDecoration(hintText: 'Sellos requeridos')),
+          const SizedBox(height: 12),
+          TextField(controller: descCtrl, decoration: const InputDecoration(hintText: 'Descripción del premio')),
+        ]),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
           FilledButton(
@@ -503,8 +737,8 @@ class _AdminScreenState extends State<AdminScreen> {
               if (stamps <= 0 || desc.isEmpty) return;
               Navigator.pop(context);
               final tiers = tier == null
-                  ? await Api.addRewardTier(widget.pass, stamps, desc)
-                  : await Api.updateRewardTier(widget.pass, tier.id, stamps, desc);
+                  ? await Api.addRewardTier(widget.slug, widget.pass, stamps, desc)
+                  : await Api.updateRewardTier(widget.slug, widget.pass, tier.id, stamps, desc);
               setState(() => _tiers = tiers);
             },
             child: const Text('Guardar'),
@@ -519,7 +753,7 @@ class _AdminScreenState extends State<AdminScreen> {
     return Scaffold(
       backgroundColor: surface,
       appBar: AppBar(
-        title: Text(_cfg.business),
+        title: Text(_biz?.name ?? widget.slug),
         centerTitle: true,
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
@@ -536,33 +770,20 @@ class _AdminScreenState extends State<AdminScreen> {
                       const SizedBox(height: 20),
                       _ActivityChart(daily: List<Map>.from(_stats!['daily'] ?? [])),
                       const SizedBox(height: 20),
-                      if (_settings != null)
+                      if (_biz != null)
                         _SettingsForm(
-                          settings: _settings!,
+                          biz: _biz!,
+                          slug: widget.slug,
                           pass: widget.pass,
-                          onSaved: (updated) {
-                            setState(() => _settings = updated);
-                            final raw = (updated['primary_color'] as String? ?? '').replaceAll('#', '');
-                            _cfg = AppConfig(
-                              business: updated['business'] ?? _cfg.business,
-                              primaryColor: raw.length == 6
-                                  ? Color(int.parse('FF$raw', radix: 16))
-                                  : _cfg.primaryColor,
-                              logoUrl: updated['logo_url'] ?? _cfg.logoUrl,
-                              cycleDays: (updated['cycle_days'] as num?)?.toInt() ?? _cfg.cycleDays,
-                              rewardTiers: _cfg.rewardTiers,
-                            );
-                            brand = _cfg.primaryColor;
-                          },
+                          onSaved: (updated) => setState(() => _biz = updated),
                         ),
                       const SizedBox(height: 20),
                       _TiersManager(
                         tiers: _tiers,
-                        pass: widget.pass,
                         onAdd: () => _showTierDialog(),
                         onEdit: (t) => _showTierDialog(tier: t),
                         onDelete: (t) async {
-                          final tiers = await Api.deleteRewardTier(widget.pass, t.id);
+                          final tiers = await Api.deleteRewardTier(widget.slug, widget.pass, t.id);
                           setState(() => _tiers = tiers);
                         },
                       ),
@@ -579,19 +800,19 @@ class _AdminScreenState extends State<AdminScreen> {
   }
 }
 
-// ─── Settings form ───────────────────────────────────────────────────────────
+// ─── Settings Form ────────────────────────────────────────────────────────────
 
 class _SettingsForm extends StatefulWidget {
-  final Map<String, dynamic> settings;
-  final String pass;
-  final void Function(Map<String, dynamic>) onSaved;
-  const _SettingsForm({required this.settings, required this.pass, required this.onSaved});
+  final Business biz;
+  final String slug, pass;
+  final void Function(Business) onSaved;
+  const _SettingsForm({required this.biz, required this.slug, required this.pass, required this.onSaved});
   @override
   State<_SettingsForm> createState() => _SettingsFormState();
 }
 
 class _SettingsFormState extends State<_SettingsForm> {
-  late final TextEditingController _business;
+  late final TextEditingController _name;
   late final TextEditingController _color;
   late final TextEditingController _logo;
   late final TextEditingController _cycle;
@@ -601,29 +822,28 @@ class _SettingsFormState extends State<_SettingsForm> {
   @override
   void initState() {
     super.initState();
-    _business = TextEditingController(text: widget.settings['business'] ?? '');
-    _color    = TextEditingController(text: widget.settings['primary_color'] ?? '');
-    _logo     = TextEditingController(text: widget.settings['logo_url'] ?? '');
-    _cycle    = TextEditingController(text: '${widget.settings['cycle_days'] ?? 30}');
+    _name  = TextEditingController(text: widget.biz.name);
+    _color = TextEditingController(
+        text: '#${widget.biz.primaryColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}');
+    _logo  = TextEditingController(text: widget.biz.logoUrl);
+    _cycle = TextEditingController(text: '${widget.biz.cycleDays}');
   }
 
   @override
-  void dispose() {
-    _business.dispose(); _color.dispose(); _logo.dispose(); _cycle.dispose();
-    super.dispose();
-  }
+  void dispose() { _name.dispose(); _color.dispose(); _logo.dispose(); _cycle.dispose(); super.dispose(); }
 
   Future<void> _save() async {
     setState(() { _saving = true; _msg = null; });
     try {
-      final updated = await Api.updateSettings(widget.pass, {
-        'business':      _business.text.trim(),
+      final raw = await Api.updateSettings(widget.slug, widget.pass, {
+        'name':          _name.text.trim(),
         'primary_color': _color.text.trim(),
         'logo_url':      _logo.text.trim(),
         'cycle_days':    int.tryParse(_cycle.text) ?? 30,
       });
-      setState(() => _msg = 'Guardado');
+      final updated = Business.fromJson(raw);
       widget.onSaved(updated);
+      setState(() => _msg = 'Guardado');
     } catch (e) {
       setState(() => _msg = e.toString());
     } finally {
@@ -635,45 +855,32 @@ class _SettingsFormState extends State<_SettingsForm> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Configuración del negocio',
-              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 14),
-          _Field(ctrl: _business, label: 'Nombre del negocio', icon: Icons.store_outlined),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Configuración del negocio', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 14),
+        _Field(ctrl: _name,  label: 'Nombre del negocio',       icon: Icons.store_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _color, label: 'Color principal (hex)',     icon: Icons.palette_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _logo,  label: 'URL del logo (opcional)',   icon: Icons.image_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _cycle, label: 'Duración del ciclo (días)', icon: Icons.timer_outlined, keyboardType: TextInputType.number),
+        if (_msg != null) ...[
           const SizedBox(height: 10),
-          _Field(ctrl: _color, label: 'Color principal (hex, ej: #E23B3B)', icon: Icons.palette_outlined),
-          const SizedBox(height: 10),
-          _Field(ctrl: _logo, label: 'URL del logo (opcional)', icon: Icons.image_outlined),
-          const SizedBox(height: 10),
-          _Field(ctrl: _cycle, label: 'Duración del ciclo (días)', icon: Icons.timer_outlined,
-              keyboardType: TextInputType.number),
-          if (_msg != null) ...[
-            const SizedBox(height: 10),
-            Text(_msg!,
-                style: TextStyle(
-                    fontSize: 13,
-                    color: _msg!.contains('✓') ? success : brand,
-                    fontWeight: FontWeight.w500)),
-          ],
-          const SizedBox(height: 14),
-          FilledButton.icon(
-            onPressed: _saving ? null : _save,
-            icon: _saving
-                ? const SizedBox(width: 16, height: 16,
-                    child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                : const Icon(Icons.save_outlined, size: 18),
-            label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
-            style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 46)),
-          ),
+          Text(_msg!, style: TextStyle(fontSize: 13,
+              color: _msg!.contains('Guardado') ? success : brand, fontWeight: FontWeight.w500)),
         ],
-      ),
+        const SizedBox(height: 14),
+        FilledButton.icon(
+          onPressed: _saving ? null : _save,
+          icon: _saving
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Icon(Icons.save_outlined, size: 18),
+          label: Text(_saving ? 'Guardando...' : 'Guardar cambios'),
+          style: FilledButton.styleFrom(minimumSize: const Size(double.infinity, 46)),
+        ),
+      ]),
     );
   }
 }
@@ -685,67 +892,41 @@ class _Field extends StatelessWidget {
   final TextInputType? keyboardType;
   const _Field({required this.ctrl, required this.label, required this.icon, this.keyboardType});
   @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: ctrl,
-      keyboardType: keyboardType,
-      style: const TextStyle(fontSize: 14),
-      decoration: InputDecoration(
-        hintText: label,
-        prefixIcon: Icon(icon, color: muted, size: 20),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => TextField(
+        controller: ctrl,
+        keyboardType: keyboardType,
+        style: const TextStyle(fontSize: 14),
+        decoration: InputDecoration(
+          hintText: label,
+          prefixIcon: Icon(icon, color: muted, size: 20),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        ),
+      );
 }
 
-// ─── Widgets reutilizables ───────────────────────────────────────────────────
-
-class _BrandBadge extends StatelessWidget {
-  const _BrandBadge();
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 72, height: 72,
-      decoration: BoxDecoration(
-        color: brand,
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [BoxShadow(color: brand.withValues(alpha: 0.35), blurRadius: 20, offset: const Offset(0, 8))],
-      ),
-      child: _cfg.logoUrl.isNotEmpty
-          ? ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Image.network(_cfg.logoUrl, fit: BoxFit.cover,
-                  errorBuilder: (_, __, ___) => const Icon(Icons.loyalty, color: Colors.white, size: 38)))
-          : const Icon(Icons.loyalty, color: Colors.white, size: 38),
-    );
-  }
-}
+// ─── Widgets ──────────────────────────────────────────────────────────────────
 
 class _WhiteCard extends StatelessWidget {
   final Widget child;
   const _WhiteCard({required this.child});
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      constraints: const BoxConstraints(maxWidth: 420),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: line),
-        boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 6))],
-      ),
-      child: child,
-    );
-  }
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.white, borderRadius: BorderRadius.circular(20), border: Border.all(color: line),
+          boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 16, offset: const Offset(0, 6))],
+        ),
+        child: child,
+      );
 }
 
-class _LoyaltyCard extends StatelessWidget {
-  final String business, name, token;
+class _VisualCard extends StatelessWidget {
+  final String businessName, name, token, logoUrl;
   final int stamps, maxStamps;
-  const _LoyaltyCard({required this.business, required this.name, required this.token, required this.stamps, required this.maxStamps});
+  final Color color;
+  const _VisualCard({required this.businessName, required this.name, required this.token,
+      required this.stamps, required this.maxStamps, required this.color, required this.logoUrl});
 
   @override
   Widget build(BuildContext context) {
@@ -756,40 +937,26 @@ class _LoyaltyCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: const Color(0xFF111528).withValues(alpha: 0.4), blurRadius: 24, offset: const Offset(0, 12))],
       ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(business, maxLines: 1, overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
-                    if (name.isNotEmpty)
-                      Text('Hola, $name', style: const TextStyle(color: Colors.white60, fontSize: 13)),
-                  ],
-                ),
-              ),
-              Icon(Icons.loyalty, color: brand, size: 26),
-            ],
-          ),
-          const SizedBox(height: 20),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
-            child: Semantics(
-              label: 'Código QR de tu tarjeta de lealtad',
-              image: true,
-              child: QrImageView(data: token, size: 180),
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Text('Muestra este código en el local para sellar',
-              textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
-        ],
-      ),
+      child: Column(children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(businessName, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            if (name.isNotEmpty)
+              Text('Hola, $name', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+          ])),
+          Icon(Icons.loyalty, color: color, size: 26),
+        ]),
+        const SizedBox(height: 20),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(18)),
+          child: QrImageView(data: token, size: 180),
+        ),
+        const SizedBox(height: 14),
+        const Text('Muestra este código en el local para sellar',
+            textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
+      ]),
     );
   }
 }
@@ -808,18 +975,16 @@ class _CycleInfo extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: expired ? brand.withValues(alpha: 0.2) : success.withValues(alpha: 0.2)),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.timer_outlined, size: 18, color: expired ? brand : success),
-          const SizedBox(width: 8),
-          Text(
-            expired ? 'Ciclo vencido — se reiniciará con el próximo sello'
-                : days == 0 ? 'El ciclo vence hoy'
-                : 'Ciclo vence en $days día${days == 1 ? '' : 's'}',
-            style: TextStyle(fontSize: 13, color: expired ? brand : success, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
+      child: Row(children: [
+        Icon(Icons.timer_outlined, size: 18, color: expired ? brand : success),
+        const SizedBox(width: 8),
+        Expanded(child: Text(
+          expired ? 'Ciclo vencido — se reiniciará con el próximo sello'
+              : days == 0 ? 'El ciclo vence hoy'
+              : 'Ciclo vence en $days día${days == 1 ? '' : 's'}',
+          style: TextStyle(fontSize: 13, color: expired ? brand : success, fontWeight: FontWeight.w500),
+        )),
+      ]),
     );
   }
 }
@@ -827,14 +992,14 @@ class _CycleInfo extends StatelessWidget {
 class _StampGrid extends StatelessWidget {
   final int stamps, maxStamps;
   final List<RewardTier> tiers;
-  const _StampGrid({required this.stamps, required this.maxStamps, required this.tiers});
+  final Color color;
+  const _StampGrid({required this.stamps, required this.maxStamps, required this.tiers, required this.color});
 
   @override
   Widget build(BuildContext context) {
     final tierSet = tiers.map((t) => t.stampsRequired).toSet();
     return Wrap(
-      spacing: 10,
-      runSpacing: 10,
+      spacing: 10, runSpacing: 10,
       children: List.generate(maxStamps, (i) {
         final pos = i + 1;
         final on = pos <= stamps;
@@ -843,13 +1008,12 @@ class _StampGrid extends StatelessWidget {
           width: 48, height: 48,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            color: on ? brand : const Color(0xFFF1F5F9),
-            border: Border.all(color: isTier ? brand : (on ? brand : line), width: isTier ? 2.5 : 1.5),
+            color: on ? color : const Color(0xFFF1F5F9),
+            border: Border.all(color: isTier ? color : (on ? color : line), width: isTier ? 2.5 : 1.5),
           ),
           child: Icon(
-            isTier ? (on ? Icons.star_rounded : Icons.star_outline_rounded)
-                   : (on ? Icons.circle : Icons.circle_outlined),
-            color: on ? Colors.white : (isTier ? brand.withValues(alpha: 0.4) : const Color(0xFFCBD5E1)),
+            isTier ? (on ? Icons.star_rounded : Icons.star_outline_rounded) : (on ? Icons.circle : Icons.circle_outlined),
+            color: on ? Colors.white : (isTier ? color.withValues(alpha: 0.4) : const Color(0xFFCBD5E1)),
             size: isTier ? 26 : 16,
           ),
         );
@@ -861,129 +1025,96 @@ class _StampGrid extends StatelessWidget {
 class _RewardList extends StatelessWidget {
   final List<RewardTier> tiers;
   final int stamps;
-  const _RewardList({required this.tiers, required this.stamps});
+  final Color color;
+  const _RewardList({required this.tiers, required this.stamps, required this.color});
 
   @override
   Widget build(BuildContext context) {
     if (tiers.isEmpty) return const SizedBox.shrink();
     return _WhiteCard(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Recompensas', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 12),
-          ...tiers.map((t) {
-            final earned = stamps >= t.stampsRequired;
-            final remaining = t.stampsRequired - stamps;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36, height: 36,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: earned ? success.withValues(alpha: 0.12) : brand.withValues(alpha: 0.08),
-                    ),
-                    child: Icon(
-                      earned ? Icons.check_circle_rounded : Icons.workspace_premium_outlined,
-                      color: earned ? success : brand, size: 20,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(t.description,
-                            style: TextStyle(fontWeight: FontWeight.w600, color: earned ? success : ink)),
-                        Text(
-                          earned ? '¡Ganado!' : 'Faltan $remaining sello${remaining == 1 ? '' : 's'}',
-                          style: TextStyle(fontSize: 12, color: earned ? success : muted),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: earned ? success.withValues(alpha: 0.1) : brand.withValues(alpha: 0.08),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text('${t.stampsRequired} ★',
-                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-                            color: earned ? success : brand)),
-                  ),
-                ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Recompensas', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 12),
+        ...tiers.map((t) {
+          final earned = stamps >= t.stampsRequired;
+          final remaining = t.stampsRequired - stamps;
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Row(children: [
+              Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: earned ? success.withValues(alpha: 0.12) : color.withValues(alpha: 0.08),
+                ),
+                child: Icon(earned ? Icons.check_circle_rounded : Icons.workspace_premium_outlined,
+                    color: earned ? success : color, size: 20),
               ),
-            );
-          }),
-        ],
-      ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(t.description, style: TextStyle(fontWeight: FontWeight.w600, color: earned ? success : ink)),
+                Text(earned ? 'Ganado' : 'Faltan $remaining sello${remaining == 1 ? '' : 's'}',
+                    style: TextStyle(fontSize: 12, color: earned ? success : muted)),
+              ])),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: earned ? success.withValues(alpha: 0.1) : color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Text('${t.stampsRequired} ★',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: earned ? success : color)),
+              ),
+            ]),
+          );
+        }),
+      ]),
     );
   }
 }
 
 class _TiersManager extends StatelessWidget {
   final List<RewardTier> tiers;
-  final String pass;
   final VoidCallback onAdd;
   final void Function(RewardTier) onEdit;
   final void Function(RewardTier) onDelete;
-  const _TiersManager({required this.tiers, required this.pass, required this.onAdd, required this.onEdit, required this.onDelete});
+  const _TiersManager({required this.tiers, required this.onAdd, required this.onEdit, required this.onDelete});
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: line),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Recompensas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              FilledButton.icon(
-                onPressed: onAdd,
-                icon: const Icon(Icons.add, size: 16),
-                label: const Text('Agregar'),
-                style: FilledButton.styleFrom(
-                    minimumSize: const Size(0, 36),
-                    padding: const EdgeInsets.symmetric(horizontal: 12)),
-              ),
-            ],
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+          const Text('Recompensas', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+          FilledButton.icon(
+            onPressed: onAdd,
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Agregar'),
+            style: FilledButton.styleFrom(minimumSize: const Size(0, 36), padding: const EdgeInsets.symmetric(horizontal: 12)),
           ),
-          if (tiers.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: Text('Sin recompensas configuradas', style: TextStyle(color: muted)),
-            )
-          else ...[
-            const SizedBox(height: 10),
-            ...tiers.map((t) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                    decoration: BoxDecoration(color: brand.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
-                    child: Text('${t.stampsRequired}★', style: TextStyle(fontWeight: FontWeight.w700, color: brand)),
-                  ),
-                  title: Text(t.description),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(icon: const Icon(Icons.edit_outlined, size: 20, color: muted), onPressed: () => onEdit(t)),
-                      IconButton(icon: Icon(Icons.delete_outline, size: 20, color: brand), onPressed: () => onDelete(t)),
-                    ],
-                  ),
-                )),
-          ],
+        ]),
+        if (tiers.isEmpty)
+          const Padding(padding: EdgeInsets.symmetric(vertical: 12),
+              child: Text('Sin recompensas configuradas', style: TextStyle(color: muted)))
+        else ...[
+          const SizedBox(height: 10),
+          ...tiers.map((t) => ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(color: brand.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(8)),
+                  child: Text('${t.stampsRequired}★', style: TextStyle(fontWeight: FontWeight.w700, color: brand)),
+                ),
+                title: Text(t.description),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                  IconButton(icon: const Icon(Icons.edit_outlined, size: 20, color: muted), onPressed: () => onEdit(t)),
+                  IconButton(icon: Icon(Icons.delete_outline, size: 20, color: brand), onPressed: () => onDelete(t)),
+                ]),
+              )),
         ],
-      ),
+      ]),
     );
   }
 }
@@ -992,18 +1123,16 @@ class _KpiGrid extends StatelessWidget {
   final Map<String, dynamic> stats;
   const _KpiGrid({required this.stats});
   @override
-  Widget build(BuildContext context) {
-    return GridView.count(
-      crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12,
-      childAspectRatio: 1.6, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
-      children: [
-        _KpiCard('Clientes', '${stats['customers']}', Icons.people_outline),
-        _KpiCard('Visitas totales', '${stats['visits']}', Icons.loyalty),
-        _KpiCard('Premios dados', '${stats['rewards']}', Icons.workspace_premium_outlined),
-        _KpiCard('Nuevos hoy', '${stats['new_today']}', Icons.person_add_outlined),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => GridView.count(
+        crossAxisCount: 2, crossAxisSpacing: 12, mainAxisSpacing: 12,
+        childAspectRatio: 1.6, shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+        children: [
+          _KpiCard('Clientes',     '${stats['customers']}', Icons.people_outline),
+          _KpiCard('Visitas',      '${stats['visits']}',    Icons.loyalty),
+          _KpiCard('Premios dados','${stats['rewards']}',   Icons.workspace_premium_outlined),
+          _KpiCard('Nuevos hoy',   '${stats['new_today']}', Icons.person_add_outlined),
+        ],
+      );
 }
 
 class _KpiCard extends StatelessWidget {
@@ -1011,23 +1140,17 @@ class _KpiCard extends StatelessWidget {
   final IconData icon;
   const _KpiCard(this.label, this.value, this.icon);
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Icon(icon, color: brand, size: 22),
           Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(value, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, height: 1)),
             Text(label, style: const TextStyle(fontSize: 11, color: muted)),
           ]),
-        ],
-      ),
-    );
-  }
+        ]),
+      );
 }
 
 class _ActivityChart extends StatelessWidget {
@@ -1036,51 +1159,41 @@ class _ActivityChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (daily.isEmpty) return const SizedBox.shrink();
-    final max = daily.map((d) => (d['n'] as int)).reduce((a, b) => a > b ? a : b);
+    final maxN = daily.map((d) => d['n'] as int).reduce((a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16), border: Border.all(color: line)),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('Actividad (14 días)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 16),
-          SizedBox(
-            height: 80,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: daily.map((d) {
-                final n = d['n'] as int;
-                final frac = max > 0 ? n / max : 0.0;
-                final date = (d['d'] as String).substring(5);
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        if (n > 0) Text('$n', style: const TextStyle(fontSize: 9, color: muted)),
-                        const SizedBox(height: 2),
-                        FractionallySizedBox(
-                          heightFactor: frac < 0.05 ? 0.05 : frac,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: brand.withValues(alpha: 0.8),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(date, style: const TextStyle(fontSize: 8, color: muted)),
-                      ],
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Text('Actividad (14 días)', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 16),
+        SizedBox(
+          height: 80,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: daily.map((d) {
+              final n = d['n'] as int;
+              final frac = maxN > 0 ? n / maxN : 0.0;
+              final date = (d['d'] as String).substring(5);
+              return Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 2),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.end, children: [
+                    if (n > 0) Text('$n', style: const TextStyle(fontSize: 9, color: muted)),
+                    const SizedBox(height: 2),
+                    FractionallySizedBox(
+                      heightFactor: frac < 0.05 ? 0.05 : frac,
+                      child: Container(decoration: BoxDecoration(
+                          color: brand.withValues(alpha: 0.8), borderRadius: BorderRadius.circular(4))),
                     ),
-                  ),
-                );
-              }).toList(),
-            ),
+                    const SizedBox(height: 4),
+                    Text(date, style: const TextStyle(fontSize: 8, color: muted)),
+                  ]),
+                ),
+              );
+            }).toList(),
           ),
-        ],
-      ),
+        ),
+      ]),
     );
   }
 }
@@ -1099,20 +1212,17 @@ class _CustomerList extends StatelessWidget {
         : customers.where((c) =>
             (c['name'] as String).toLowerCase().contains(q) ||
             (c['phone'] as String).contains(q)).toList();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Clientes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-        const SizedBox(height: 10),
-        TextField(
-          onChanged: onSearch,
-          decoration: const InputDecoration(hintText: 'Buscar por nombre o teléfono',
-              prefixIcon: Icon(Icons.search, color: muted)),
-        ),
-        const SizedBox(height: 10),
-        ...filtered.map((c) => _CustomerTile(c: c)),
-      ],
-    );
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      const Text('Clientes', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+      const SizedBox(height: 10),
+      TextField(
+        onChanged: onSearch,
+        decoration: const InputDecoration(hintText: 'Buscar por nombre o teléfono',
+            prefixIcon: Icon(Icons.search, color: muted)),
+      ),
+      const SizedBox(height: 10),
+      ...filtered.map((c) => _CustomerTile(c: c)),
+    ]);
   }
 }
 
@@ -1132,35 +1242,30 @@ class _CustomerTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14), border: Border.all(color: line)),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: brand.withValues(alpha: 0.12),
-            radius: 20,
-            child: Text(
-              (c['name'] as String).isNotEmpty ? (c['name'] as String)[0].toUpperCase() : '?',
-              style: TextStyle(color: brand, fontWeight: FontWeight.w700),
-            ),
+      child: Row(children: [
+        CircleAvatar(
+          backgroundColor: brand.withValues(alpha: 0.12), radius: 20,
+          child: Text(
+            (c['name'] as String).isNotEmpty ? (c['name'] as String)[0].toUpperCase() : '?',
+            style: TextStyle(color: brand, fontWeight: FontWeight.w700),
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(c['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              Text(c['phone'] ?? '', style: const TextStyle(color: muted, fontSize: 12)),
-            ]),
-          ),
-          Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-            Text('${c['stamps']} sellos', style: const TextStyle(fontSize: 12, color: muted)),
-            Text('${c['rewards']} premios', style: const TextStyle(fontSize: 12, color: muted)),
-          ]),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
-            onPressed: () => _openWhatsApp(c['phone'] ?? ''),
-            tooltip: 'WhatsApp',
-          ),
-        ],
-      ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text(c['name'] ?? '', style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(c['phone'] ?? '', style: const TextStyle(color: muted, fontSize: 12)),
+        ])),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text('${c['stamps']} sellos', style: const TextStyle(fontSize: 12, color: muted)),
+          Text('${c['rewards']} premios', style: const TextStyle(fontSize: 12, color: muted)),
+        ]),
+        const SizedBox(width: 8),
+        IconButton(
+          icon: const Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
+          onPressed: () => _openWhatsApp(c['phone'] ?? ''),
+          tooltip: 'WhatsApp',
+        ),
+      ]),
     );
   }
 }
@@ -1169,18 +1274,14 @@ class _ErrorBanner extends StatelessWidget {
   final String message;
   const _ErrorBanner(this.message);
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(color: brand.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        children: [
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(color: brand.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
+        child: Row(children: [
           Icon(Icons.error_outline, color: brand, size: 20),
           const SizedBox(width: 10),
           Expanded(child: Text(message, style: TextStyle(color: brand, fontSize: 13))),
-        ],
-      ),
-    );
-  }
+        ]),
+      );
 }

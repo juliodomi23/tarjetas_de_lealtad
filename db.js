@@ -3,14 +3,33 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
 
-function openDb(file = 'loyalty.db') {
+// SQLite datetime('now') devuelve 'YYYY-MM-DD HH:MM:SS' sin zona — tratar como UTC.
+function parseDbDate(s) {
+  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
+}
+
+function openDb(file = 'loyalty.db', seedBusiness = null) {
   const dir = path.dirname(path.resolve(file));
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   const db = new Database(file);
+  db.pragma('foreign_keys = ON');
+
+  db.exec(`CREATE TABLE IF NOT EXISTS businesses (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    slug          TEXT UNIQUE NOT NULL,
+    name          TEXT NOT NULL,
+    primary_color TEXT NOT NULL DEFAULT '#E23B3B',
+    logo_url      TEXT NOT NULL DEFAULT '',
+    cycle_days    INTEGER NOT NULL DEFAULT 30,
+    admin_pass    TEXT NOT NULL,
+    created_at    TEXT NOT NULL DEFAULT (datetime('now'))
+  )`);
 
   db.exec(`CREATE TABLE IF NOT EXISTS customers (
-    token         TEXT PRIMARY KEY,
-    phone         TEXT UNIQUE NOT NULL,
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id   INTEGER NOT NULL DEFAULT 1,
+    token         TEXT UNIQUE NOT NULL,
+    phone         TEXT NOT NULL,
     name          TEXT,
     stamps        INTEGER NOT NULL DEFAULT 0,
     total_rewards INTEGER NOT NULL DEFAULT 0,
@@ -18,89 +37,114 @@ function openDb(file = 'loyalty.db') {
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
 
-  // Migraciones seguras para DBs existentes
-  try { db.exec(`ALTER TABLE customers ADD COLUMN total_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
-  try { db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
-
-  db.exec(`CREATE TABLE IF NOT EXISTS stamps_log (
-    id    INTEGER PRIMARY KEY,
-    token TEXT NOT NULL,
-    ts    TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-
   db.exec(`CREATE TABLE IF NOT EXISTS reward_tiers (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    business_id     INTEGER NOT NULL DEFAULT 1,
     stamps_required INTEGER NOT NULL,
     description     TEXT NOT NULL
   )`);
 
-  db.exec(`CREATE TABLE IF NOT EXISTS settings (
-    key   TEXT PRIMARY KEY,
-    value TEXT NOT NULL
+  db.exec(`CREATE TABLE IF NOT EXISTS stamps_log (
+    id          INTEGER PRIMARY KEY,
+    token       TEXT NOT NULL,
+    business_id INTEGER NOT NULL DEFAULT 1,
+    ts          TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
+
+  // Migraciones para despliegues anteriores (columnas nuevas)
+  try { db.exec(`ALTER TABLE customers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
+  try { db.exec(`ALTER TABLE customers ADD COLUMN total_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
+  try { db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
+  try { db.exec(`ALTER TABLE reward_tiers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
+  try { db.exec(`ALTER TABLE stamps_log ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
+
+  // Sembrar negocio por defecto si no existe ninguno
+  if (seedBusiness) {
+    db.prepare(`INSERT OR IGNORE INTO businesses (slug,name,primary_color,logo_url,cycle_days,admin_pass)
+      VALUES (?,?,?,?,?,?)`)
+      .run(seedBusiness.slug, seedBusiness.name, seedBusiness.primary_color,
+           seedBusiness.logo_url, seedBusiness.cycle_days, seedBusiness.admin_pass);
+  }
 
   return db;
 }
 
-function getSetting(db, key, fallback = '') {
-  const row = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
-  return row ? row.value : fallback;
+// ── Negocios ─────────────────────────────────────────────────────────────────
+
+function listBusinesses(db) {
+  return db.prepare('SELECT id,slug,name,primary_color,logo_url,cycle_days FROM businesses ORDER BY id').all();
 }
 
-function setSetting(db, key, value) {
-  db.prepare('INSERT INTO settings (key,value) VALUES (?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value')
-    .run(key, value);
+function getBusinessBySlug(db, slug) {
+  return db.prepare('SELECT * FROM businesses WHERE slug=?').get(slug);
 }
+
+function createBusiness(db, { slug, name, primary_color = '#E23B3B', logo_url = '', cycle_days = 30, admin_pass }) {
+  db.prepare(`INSERT INTO businesses (slug,name,primary_color,logo_url,cycle_days,admin_pass)
+    VALUES (?,?,?,?,?,?)`)
+    .run(slug, name, primary_color, logo_url, cycle_days, admin_pass);
+  return getBusinessBySlug(db, slug);
+}
+
+function updateBusiness(db, slug, fields) {
+  const allowed = ['name', 'primary_color', 'logo_url', 'cycle_days'];
+  const sets = allowed.filter(k => fields[k] !== undefined).map(k => `${k}=?`).join(',');
+  const vals = allowed.filter(k => fields[k] !== undefined).map(k => fields[k]);
+  if (!sets) return getBusinessBySlug(db, slug);
+  db.prepare(`UPDATE businesses SET ${sets} WHERE slug=?`).run(...vals, slug);
+  return getBusinessBySlug(db, slug);
+}
+
+// ── Clientes ─────────────────────────────────────────────────────────────────
 
 const normPhone = p => String(p).replace(/\D/g, '');
 
-function join(db, phone, name) {
+function join(db, businessId, phone, name) {
   phone = normPhone(phone);
   if (phone.length < 10) throw new Error('Teléfono inválido');
-  const existing = db.prepare('SELECT token FROM customers WHERE phone=?').get(phone);
+  const existing = db.prepare('SELECT token FROM customers WHERE business_id=? AND phone=?').get(businessId, phone);
   if (existing) return existing.token;
   const token = crypto.randomBytes(8).toString('hex');
-  db.prepare('INSERT INTO customers (token, phone, name) VALUES (?,?,?)').run(token, phone, name || '');
+  db.prepare('INSERT INTO customers (business_id,token,phone,name) VALUES (?,?,?,?)').run(businessId, token, phone, name || '');
   return token;
 }
 
-function getRewardTiers(db) {
-  return db.prepare('SELECT * FROM reward_tiers ORDER BY stamps_required').all();
+// ── Recompensas ───────────────────────────────────────────────────────────────
+
+function getRewardTiers(db, businessId) {
+  return db.prepare('SELECT * FROM reward_tiers WHERE business_id=? ORDER BY stamps_required').all(businessId);
 }
 
-function addRewardTier(db, stamps_required, description) {
-  db.prepare('INSERT INTO reward_tiers (stamps_required, description) VALUES (?,?)').run(stamps_required, description);
-  return getRewardTiers(db);
+function addRewardTier(db, businessId, stamps_required, description) {
+  db.prepare('INSERT INTO reward_tiers (business_id,stamps_required,description) VALUES (?,?,?)').run(businessId, stamps_required, description);
+  return getRewardTiers(db, businessId);
 }
 
-function updateRewardTier(db, id, stamps_required, description) {
-  db.prepare('UPDATE reward_tiers SET stamps_required=?, description=? WHERE id=?').run(stamps_required, description, id);
-  return getRewardTiers(db);
+function updateRewardTier(db, businessId, id, stamps_required, description) {
+  db.prepare('UPDATE reward_tiers SET stamps_required=?,description=? WHERE id=? AND business_id=?').run(stamps_required, description, id, businessId);
+  return getRewardTiers(db, businessId);
 }
 
-function deleteRewardTier(db, id) {
-  db.prepare('DELETE FROM reward_tiers WHERE id=?').run(id);
-  return getRewardTiers(db);
+function deleteRewardTier(db, businessId, id) {
+  db.prepare('DELETE FROM reward_tiers WHERE id=? AND business_id=?').run(id, businessId);
+  return getRewardTiers(db, businessId);
 }
 
-// SQLite datetime('now') devuelve 'YYYY-MM-DD HH:MM:SS' sin zona — tratar como UTC.
-function parseDbDate(s) {
-  return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
-}
+// ── Sellos ────────────────────────────────────────────────────────────────────
 
-function addStamp(db, token, cycleDays) {
+function addStamp(db, token, business) {
   const c = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
   if (!c) throw new Error('Cliente no encontrado');
+  if (c.business_id !== business.id) throw new Error('Tarjeta no válida para este negocio');
 
-  const tiers = getRewardTiers(db);
+  const tiers = getRewardTiers(db, business.id);
   const maxStamps = tiers.length > 0 ? Math.max(...tiers.map(t => t.stamps_required)) : 0;
 
   let currentStamps = c.stamps;
   let cycleStart = c.cycle_start || c.created_at;
-  if (cycleDays > 0) {
-    const msElapsed = Date.now() - parseDbDate(cycleStart).getTime();
-    const daysElapsed = msElapsed / (1000 * 60 * 60 * 24);
-    if (daysElapsed >= cycleDays) {
+  if (business.cycle_days > 0) {
+    const daysElapsed = (Date.now() - parseDbDate(cycleStart).getTime()) / 86400000;
+    if (daysElapsed >= business.cycle_days) {
       currentStamps = 0;
       cycleStart = new Date().toISOString();
     }
@@ -108,12 +152,9 @@ function addStamp(db, token, cycleDays) {
 
   const prevStamps = currentStamps;
   const newStamps = currentStamps + 1;
-
-  // Recompensas recién cruzadas en este sello
   const earned = tiers.filter(t => prevStamps < t.stamps_required && newStamps >= t.stamps_required);
   const totalRewards = (c.total_rewards || 0) + earned.length;
 
-  // Reinicio al llegar al máximo
   let finalStamps = newStamps;
   let reset = false;
   if (maxStamps > 0 && newStamps >= maxStamps) {
@@ -122,29 +163,38 @@ function addStamp(db, token, cycleDays) {
     reset = true;
   }
 
-  db.prepare('UPDATE customers SET stamps=?, total_rewards=?, cycle_start=? WHERE token=?')
+  db.prepare('UPDATE customers SET stamps=?,total_rewards=?,cycle_start=? WHERE token=?')
     .run(finalStamps, totalRewards, cycleStart, token);
-  db.prepare('INSERT INTO stamps_log (token) VALUES (?)').run(token);
+  db.prepare('INSERT INTO stamps_log (token,business_id) VALUES (?,?)').run(token, business.id);
 
   return { stamps: finalStamps, total_rewards: totalRewards, earned, reset, max_stamps: maxStamps };
 }
 
-function stats(db) {
+// ── Métricas ──────────────────────────────────────────────────────────────────
+
+function stats(db, businessId) {
   const c = db.prepare(`SELECT
-    COUNT(*)                   AS customers,
-    COALESCE(SUM(stamps),0)    AS in_progress,
+    COUNT(*)                       AS customers,
+    COALESCE(SUM(stamps),0)        AS in_progress,
     COALESCE(SUM(total_rewards),0) AS rewards,
-    SUM(CASE WHEN date(created_at) = date('now','localtime') THEN 1 ELSE 0 END) AS new_today
-    FROM customers`).get();
-  const visits = db.prepare('SELECT COUNT(*) n FROM stamps_log').get().n;
+    SUM(CASE WHEN date(created_at)=date('now','localtime') THEN 1 ELSE 0 END) AS new_today
+    FROM customers WHERE business_id=?`).get(businessId);
+  const visits = db.prepare('SELECT COUNT(*) n FROM stamps_log WHERE business_id=?').get(businessId).n;
   const daily = db.prepare(`SELECT date(ts) d, COUNT(*) n FROM stamps_log
-    WHERE ts >= datetime('now','-14 days') GROUP BY date(ts) ORDER BY d`).all();
+    WHERE business_id=? AND ts>=datetime('now','-14 days')
+    GROUP BY date(ts) ORDER BY d`).all(businessId);
   return { customers: c.customers, visits, rewards: c.rewards, in_progress: c.in_progress, new_today: c.new_today, daily };
 }
 
-function listCustomers(db) {
-  return db.prepare(`SELECT name, phone, stamps, total_rewards AS rewards, created_at, cycle_start
-    FROM customers ORDER BY created_at DESC`).all();
+function listCustomers(db, businessId) {
+  return db.prepare(`SELECT name,phone,stamps,total_rewards AS rewards,created_at,cycle_start
+    FROM customers WHERE business_id=? ORDER BY created_at DESC`).all(businessId);
 }
 
-module.exports = { openDb, join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier, normPhone, stats, listCustomers, getSetting, setSetting };
+module.exports = {
+  openDb, parseDbDate,
+  listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
+  normPhone, join,
+  getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
+  addStamp, stats, listCustomers,
+};

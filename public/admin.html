@@ -208,15 +208,21 @@
 </div>
 
 <script>
-  let pass = localStorage.getItem('staffPass');
-  if (!pass) { pass = prompt('Clave del personal:') || ''; localStorage.setItem('staffPass', pass); }
+  // Lee el slug desde ?b=slug en la URL
+  const slug = new URLSearchParams(location.search).get('b') || 'negocio-1';
+
+  let pass = localStorage.getItem('staffPass_' + slug);
+  if (!pass) {
+    pass = prompt(`Clave del personal (${slug}):`) || '';
+    localStorage.setItem('staffPass_' + slug, pass);
+  }
   const auth = { 'Authorization': 'Bearer ' + pass };
 
   let customers = [], sort = { k: 'created_at', dir: -1 };
 
   async function api(path, opts = {}) {
     const r = await fetch(path, { ...opts, headers: { ...auth, ...(opts.headers || {}) } });
-    if (r.status === 401) { localStorage.removeItem('staffPass'); location.reload(); }
+    if (r.status === 401) { localStorage.removeItem('staffPass_' + slug); location.reload(); }
     return r.json();
   }
 
@@ -236,8 +242,9 @@
   }
 
   function renderStats(s) {
-    document.getElementById('biz').textContent = s.business;
-    document.title = 'Panel — ' + s.business;
+    const name = s.business || s.name || slug;
+    document.getElementById('biz').textContent = name;
+    document.title = 'Panel — ' + name;
     document.getElementById('kpis').innerHTML = [
       kpi('users', '#3b82f6', s.customers, 'Clientes'),
       kpi('stamp', '#e23b3b', s.visits,    'Sellos otorgados'),
@@ -277,8 +284,8 @@
 
   // ── Settings ─────────────────────────────────────────────────────────────────
   async function loadSettings() {
-    const s = await api('/api/settings');
-    document.getElementById('s-business').value = s.business || '';
+    const s = await api(`/api/config?b=${slug}`);
+    document.getElementById('s-business').value = s.business || s.name || '';
     document.getElementById('s-color').value    = s.primary_color || '';
     document.getElementById('s-logo').value     = s.logo_url || '';
     document.getElementById('s-cycle').value    = s.cycle_days || 30;
@@ -289,11 +296,11 @@
     const msg = document.getElementById('s-msg');
     btn.disabled = true; msg.textContent = '';
     try {
-      await api('/api/settings', {
+      await api(`/api/${slug}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          business:      document.getElementById('s-business').value.trim(),
+          name:          document.getElementById('s-business').value.trim(),
           primary_color: document.getElementById('s-color').value.trim(),
           logo_url:      document.getElementById('s-logo').value.trim(),
           cycle_days:    Number(document.getElementById('s-cycle').value),
@@ -310,7 +317,7 @@
 
   // ── Tiers ────────────────────────────────────────────────────────────────────
   async function loadTiers() {
-    const tiers = await api('/api/reward-tiers');
+    const tiers = await api(`/api/${slug}/reward-tiers`);
     renderTiers(tiers);
   }
 
@@ -332,7 +339,7 @@
     const stamps = Number(document.getElementById('t-stamps').value);
     const desc   = document.getElementById('t-desc').value.trim();
     if (!stamps || !desc) return;
-    const tiers = await api('/api/reward-tiers', {
+    const tiers = await api(`/api/${slug}/reward-tiers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stamps_required: stamps, description: desc }),
@@ -344,7 +351,7 @@
 
   async function deleteTier(id) {
     if (!confirm('¿Eliminar esta recompensa?')) return;
-    const tiers = await api(`/api/reward-tiers/${id}`, { method: 'DELETE' });
+    const tiers = await api(`/api/${slug}/reward-tiers/${id}`, { method: 'DELETE' });
     renderTiers(tiers);
   }
 
@@ -353,7 +360,7 @@
     if (newStamps === null) return;
     const newDesc = prompt('Descripción:', desc);
     if (newDesc === null) return;
-    const tiers = await api(`/api/reward-tiers/${id}`, {
+    const tiers = await api(`/api/${slug}/reward-tiers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stamps_required: Number(newStamps), description: newDesc }),
@@ -364,7 +371,10 @@
   // ── Load all ─────────────────────────────────────────────────────────────────
   async function load() {
     try {
-      const [s, list] = await Promise.all([api('/api/stats'), api('/api/customers')]);
+      const [s, list] = await Promise.all([
+        api(`/api/${slug}/stats`),
+        api(`/api/${slug}/customers`),
+      ]);
       customers = list;
       renderStats(s);
       renderRows();

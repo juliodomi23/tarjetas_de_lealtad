@@ -1,0 +1,378 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ámbar Rojo — Negocios</title>
+<link rel="stylesheet" href="style.css">
+<style>
+  body { display:block; padding:20px; }
+  .wrap { max-width:1100px; margin:0 auto; }
+
+  .top { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:24px; flex-wrap:wrap; }
+  .brand { display:flex; align-items:center; gap:14px; }
+  .logo { width:48px; height:48px; border-radius:14px; background:linear-gradient(135deg,#e23b3b,#b62d2d);
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 8px 24px rgba(226,59,59,.4); flex:none; }
+  .brand h1 { font-size:1.4rem; margin:0; line-height:1.1; }
+  .brand .sub { color:#8b90a8; font-size:.8rem; margin-top:2px; }
+  .top-actions { display:flex; gap:8px; }
+  .ghost { width:auto; padding:9px 16px; margin:0; background:#1a1f35; color:#f2f3f7;
+    border:1px solid #2c3354; display:flex; align-items:center; gap:8px; font-size:.88rem;
+    transition:border-color .2s, background .2s; }
+  .ghost:hover { background:#222843; border-color:#3a4470; }
+  .ghost.primary { background:#e23b3b; border-color:#e23b3b; }
+  .ghost.primary:hover { opacity:.85; }
+
+  /* ── KPI strip ── */
+  .kpi-strip { display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:12px; margin-bottom:24px; }
+  .kpi { background:#1a1f35; border:1px solid #232a47; border-radius:14px; padding:14px 16px; }
+  .kpi .n { font-size:2rem; font-weight:700; line-height:1; }
+  .kpi .l { color:#8b90a8; font-size:.78rem; margin-top:4px; }
+
+  /* ── Business cards ── */
+  .biz-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:16px; }
+  .biz-card { background:#1a1f35; border:1px solid #232a47; border-radius:18px; padding:20px;
+    transition:border-color .2s, transform .2s; }
+  .biz-card:hover { border-color:#3a4470; transform:translateY(-2px); }
+
+  .biz-header { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .biz-dot { width:42px; height:42px; border-radius:12px; flex:none;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 16px rgba(0,0,0,.3); }
+  .biz-name { font-size:1.05rem; font-weight:700; line-height:1.2; }
+  .biz-slug { color:#8b90a8; font-size:.78rem; font-family:monospace; }
+
+  .biz-stats { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:16px; }
+  .biz-stat { background:#111528; border-radius:10px; padding:10px 12px; text-align:center; }
+  .biz-stat .sn { font-size:1.3rem; font-weight:700; line-height:1; }
+  .biz-stat .sl { color:#8b90a8; font-size:.7rem; margin-top:3px; }
+
+  .biz-pass { background:#111528; border-radius:10px; padding:9px 12px; margin-bottom:14px;
+    display:flex; align-items:center; gap:8px; font-size:.82rem; }
+  .biz-pass span { color:#8b90a8; white-space:nowrap; }
+  .biz-pass code { color:#f2f3f7; font-family:monospace; flex:1; }
+  .copy-btn { background:none; border:1px solid #2c3354; border-radius:6px;
+    color:#8b90a8; cursor:pointer; padding:3px 8px; font-size:.72rem; transition:all .2s; white-space:nowrap; }
+  .copy-btn:hover { border-color:#e23b3b; color:#e23b3b; }
+
+  .biz-actions { display:flex; gap:8px; }
+  .btn-panel { flex:1; background:#e23b3b; color:#fff; border:none; border-radius:10px;
+    padding:9px 14px; font-size:.85rem; font-weight:600; cursor:pointer; font-family:inherit;
+    transition:opacity .2s; text-align:center; text-decoration:none; display:block; }
+  .btn-panel:hover { opacity:.85; }
+  .btn-edit { background:#1f2547; border:1px solid #2c3354; color:#f2f3f7; border-radius:10px;
+    padding:9px 14px; font-size:.85rem; cursor:pointer; font-family:inherit;
+    transition:border-color .2s, background .2s; }
+  .btn-edit:hover { background:#222843; border-color:#3a4470; }
+
+  /* ── Modal crear negocio ── */
+  .modal-bg { position:fixed; inset:0; background:rgba(0,0,0,.7); display:none;
+    align-items:center; justify-content:center; z-index:100; padding:20px; }
+  .modal-bg.open { display:flex; }
+  .modal { background:#1a1f35; border:1px solid #2c3354; border-radius:20px;
+    padding:24px; width:100%; max-width:480px; }
+  .modal h2 { margin:0 0 20px; font-size:1.1rem; }
+  .field { margin-bottom:12px; }
+  .field label { display:block; font-size:.78rem; color:#8b90a8; margin-bottom:5px; }
+  .field input { width:100%; box-sizing:border-box; background:#111528; border:1px solid #2c3354;
+    border-radius:10px; padding:10px 12px; color:#f2f3f7; font-size:.9rem; font-family:inherit; }
+  .field input:focus { outline:none; border-color:#e23b3b; }
+  .modal-actions { display:flex; gap:10px; margin-top:20px; }
+  .modal-actions button { flex:1; padding:11px; border-radius:10px; font-size:.9rem;
+    font-weight:600; cursor:pointer; font-family:inherit; border:none; }
+  .modal-actions .cancel { background:#111528; color:#8b90a8; border:1px solid #2c3354; }
+  .modal-actions .cancel:hover { border-color:#3a4470; color:#f2f3f7; }
+  .modal-actions .confirm { background:#e23b3b; color:#fff; }
+  .modal-actions .confirm:hover { opacity:.85; }
+  .modal-actions .confirm:disabled { opacity:.5; cursor:default; }
+  .err-msg { color:#e23b3b; font-size:.82rem; margin-top:8px; min-height:18px; }
+
+  /* ── Edit modal ── */
+  #edit-modal .confirm { background:#3b82f6; }
+  #edit-modal .confirm:hover { opacity:.85; }
+
+  .state { color:#8b90a8; text-align:center; padding:40px 0; }
+  .spin { width:22px; height:22px; border:3px solid #2c3354; border-top-color:#e23b3b;
+    border-radius:50%; display:inline-block; animation:spin .8s linear infinite; vertical-align:middle; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  :focus-visible { outline:2px solid #e23b3b; outline-offset:2px; border-radius:6px; }
+  @media (max-width:640px) { body { padding:14px; } .biz-grid { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="top">
+    <div class="brand">
+      <div class="logo">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Ámbar Rojo Studios</h1>
+        <div class="sub">Panel de gestión · Tarjetas de lealtad</div>
+      </div>
+    </div>
+    <div class="top-actions">
+      <button class="ghost" id="btn-refresh">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+        Actualizar
+      </button>
+      <button class="ghost primary" id="btn-new">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Nuevo negocio
+      </button>
+    </div>
+  </div>
+
+  <!-- KPIs globales -->
+  <div class="kpi-strip" id="kpi-strip">
+    <div class="state"><span class="spin"></span></div>
+  </div>
+
+  <!-- Grid de negocios -->
+  <div id="biz-container">
+    <div class="state"><span class="spin"></span> Cargando negocios…</div>
+  </div>
+
+</div>
+
+<!-- Modal: crear negocio -->
+<div class="modal-bg" id="create-modal">
+  <div class="modal">
+    <h2>Nuevo negocio</h2>
+    <div class="field"><label>Slug (URL-friendly, único)</label><input id="n-slug" type="text" placeholder="cafe-el-sol"></div>
+    <div class="field"><label>Nombre del negocio</label><input id="n-name" type="text" placeholder="Café El Sol"></div>
+    <div class="field"><label>Color principal (hex)</label><input id="n-color" type="text" value="#E23B3B" maxlength="7"></div>
+    <div class="field"><label>URL del logo (opcional)</label><input id="n-logo" type="url" placeholder="https://..."></div>
+    <div class="field"><label>Duración del ciclo (días)</label><input id="n-cycle" type="number" value="30" min="1"></div>
+    <div class="field"><label>Clave del personal (admin_pass)</label><input id="n-pass" type="text" placeholder="clave-segura-123"></div>
+    <div class="err-msg" id="n-err"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="n-cancel">Cancelar</button>
+      <button class="confirm" id="n-confirm">Crear negocio</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: editar negocio -->
+<div class="modal-bg" id="edit-modal">
+  <div class="modal">
+    <h2>Editar negocio</h2>
+    <input type="hidden" id="e-slug">
+    <div class="field"><label>Nombre del negocio</label><input id="e-name" type="text"></div>
+    <div class="field"><label>Color principal (hex)</label><input id="e-color" type="text" maxlength="7"></div>
+    <div class="field"><label>URL del logo (opcional)</label><input id="e-logo" type="url"></div>
+    <div class="field"><label>Duración del ciclo (días)</label><input id="e-cycle" type="number" min="1"></div>
+    <div class="err-msg" id="e-err"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="e-cancel">Cancelar</button>
+      <button class="confirm" id="e-confirm">Guardar cambios</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Auth ──────────────────────────────────────────────────────────────────────
+  let superPass = sessionStorage.getItem('superPass');
+  if (!superPass) {
+    superPass = prompt('Clave de Ámbar Rojo (super-admin):') || '';
+    sessionStorage.setItem('superPass', superPass);
+  }
+  const auth = { 'Authorization': 'Bearer ' + superPass };
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { ...opts, headers: { ...auth, ...(opts.headers||{}) } });
+    if (r.status === 401) { sessionStorage.removeItem('superPass'); location.reload(); }
+    const data = await r.json();
+    if (!r.ok) throw new Error(data.error || 'Error');
+    return data;
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+  function colorDot(color, size = 42) {
+    return `<div class="biz-dot" style="background:${color};box-shadow:0 6px 16px ${color}55;width:${size}px;height:${size}px;">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20.42 4.58a5.4 5.4 0 0 0-7.65 0L12 5.36l-.77-.78a5.4 5.4 0 0 0-7.65 7.65l.78.77L12 20.66l7.64-7.66.78-.77a5.4 5.4 0 0 0 0-7.65z"/>
+      </svg>
+    </div>`;
+  }
+
+  function renderKpis(list) {
+    const total   = list.length;
+    const clients = list.reduce((s,b) => s + b.customers, 0);
+    const stamps  = list.reduce((s,b) => s + b.total_stamps, 0);
+    const newHoy  = list.reduce((s,b) => s + b.new_today, 0);
+    document.getElementById('kpi-strip').innerHTML = [
+      `<div class="kpi"><div class="n">${total}</div><div class="l">Negocios activos</div></div>`,
+      `<div class="kpi"><div class="n">${clients}</div><div class="l">Clientes totales</div></div>`,
+      `<div class="kpi"><div class="n">${stamps}</div><div class="l">Sellos otorgados</div></div>`,
+      `<div class="kpi"><div class="n">${newHoy}</div><div class="l">Clientes nuevos hoy</div></div>`,
+    ].join('');
+  }
+
+  function adminUrl(slug) {
+    return `${location.origin}/admin.html?b=${slug}`;
+  }
+
+  function renderBusinesses(list) {
+    if (!list.length) {
+      document.getElementById('biz-container').innerHTML =
+        '<p class="state">No hay negocios todavía. Crea el primero.</p>';
+      return;
+    }
+    document.getElementById('biz-container').innerHTML =
+      `<div class="biz-grid">${list.map(b => `
+        <div class="biz-card">
+          <div class="biz-header">
+            ${colorDot(b.primary_color)}
+            <div>
+              <div class="biz-name">${b.name}</div>
+              <div class="biz-slug">${b.slug}</div>
+            </div>
+          </div>
+          <div class="biz-stats">
+            <div class="biz-stat"><div class="sn">${b.customers}</div><div class="sl">Clientes</div></div>
+            <div class="biz-stat"><div class="sn">${b.total_stamps}</div><div class="sl">Sellos</div></div>
+            <div class="biz-stat"><div class="sn">${b.new_today}</div><div class="sl">Nuevos hoy</div></div>
+          </div>
+          <div class="biz-pass">
+            <span>Clave:</span>
+            <code>${b.admin_pass}</code>
+            <button class="copy-btn" onclick="copyText('${b.admin_pass}', this)">Copiar</button>
+          </div>
+          <div class="biz-actions">
+            <a class="btn-panel" href="/admin.html?b=${b.slug}" target="_blank">Ver panel</a>
+            <button class="btn-edit" onclick="openEdit(${JSON.stringify(b).replace(/"/g,'&quot;')})">Editar</button>
+          </div>
+        </div>`).join('')}
+      </div>`;
+  }
+
+  // ── Cargar datos ──────────────────────────────────────────────────────────────
+  async function load() {
+    document.getElementById('biz-container').innerHTML =
+      '<div class="state"><span class="spin"></span> Cargando…</div>';
+    document.getElementById('kpi-strip').innerHTML =
+      '<div class="state"><span class="spin"></span></div>';
+    try {
+      const list = await api('/api/admin/businesses');
+      renderKpis(list);
+      renderBusinesses(list);
+    } catch (e) {
+      document.getElementById('biz-container').innerHTML =
+        `<p class="state">Error al cargar: ${e.message}</p>`;
+    }
+  }
+
+  document.getElementById('btn-refresh').onclick = load;
+
+  // ── Crear negocio ─────────────────────────────────────────────────────────────
+  document.getElementById('btn-new').onclick = () =>
+    document.getElementById('create-modal').classList.add('open');
+  document.getElementById('n-cancel').onclick = () =>
+    document.getElementById('create-modal').classList.remove('open');
+
+  document.getElementById('n-confirm').onclick = async () => {
+    const btn = document.getElementById('n-confirm');
+    const err = document.getElementById('n-err');
+    const slug   = document.getElementById('n-slug').value.trim().toLowerCase().replace(/\s+/g,'-');
+    const name   = document.getElementById('n-name').value.trim();
+    const color  = document.getElementById('n-color').value.trim();
+    const logo   = document.getElementById('n-logo').value.trim();
+    const cycle  = Number(document.getElementById('n-cycle').value);
+    const pass   = document.getElementById('n-pass').value.trim();
+
+    if (!slug || !name || !pass) { err.textContent = 'Slug, nombre y clave son obligatorios.'; return; }
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Creando…';
+    try {
+      await api('/api/businesses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ slug, name, primary_color: color, logo_url: logo, cycle_days: cycle, admin_pass: pass }),
+      });
+      document.getElementById('create-modal').classList.remove('open');
+      // Reset form
+      ['n-slug','n-name','n-logo','n-pass'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('n-color').value = '#E23B3B';
+      document.getElementById('n-cycle').value = '30';
+      load();
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Crear negocio';
+    }
+  };
+
+  // Cerrar modal al hacer click fuera
+  document.getElementById('create-modal').onclick = e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  };
+
+  // ── Editar negocio ────────────────────────────────────────────────────────────
+  function openEdit(b) {
+    document.getElementById('e-slug').value  = b.slug;
+    document.getElementById('e-name').value  = b.name;
+    document.getElementById('e-color').value = b.primary_color;
+    document.getElementById('e-logo').value  = b.logo_url;
+    document.getElementById('e-cycle').value = b.cycle_days;
+    document.getElementById('e-err').textContent = '';
+    document.getElementById('edit-modal').classList.add('open');
+  }
+
+  document.getElementById('e-cancel').onclick = () =>
+    document.getElementById('edit-modal').classList.remove('open');
+
+  document.getElementById('edit-modal').onclick = e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  };
+
+  document.getElementById('e-confirm').onclick = async () => {
+    const btn  = document.getElementById('e-confirm');
+    const err  = document.getElementById('e-err');
+    const slug = document.getElementById('e-slug').value;
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Guardando…';
+    try {
+      await api(`/api/admin/businesses/${slug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name:          document.getElementById('e-name').value.trim(),
+          primary_color: document.getElementById('e-color').value.trim(),
+          logo_url:      document.getElementById('e-logo').value.trim(),
+          cycle_days:    Number(document.getElementById('e-cycle').value),
+        }),
+      });
+      document.getElementById('edit-modal').classList.remove('open');
+      load();
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Guardar cambios';
+    }
+  };
+
+  // ── Utilidades ────────────────────────────────────────────────────────────────
+  function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = 'Copiado';
+      setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+  }
+
+  // ── Init ──────────────────────────────────────────────────────────────────────
+  load();
+</script>
+</body>
+</html>

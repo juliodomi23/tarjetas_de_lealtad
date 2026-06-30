@@ -5,11 +5,9 @@ import 'package:http/http.dart' as http;
 const apiBase = 'https://lealtad.ambarrojostudios.cloud';
 
 class RewardTier {
-  final int id;
-  final int stampsRequired;
+  final int id, stampsRequired;
   final String description;
   const RewardTier({required this.id, required this.stampsRequired, required this.description});
-
   factory RewardTier.fromJson(Map j) => RewardTier(
         id: j['id'] ?? 0,
         stampsRequired: j['stamps_required'] ?? 0,
@@ -17,65 +15,89 @@ class RewardTier {
       );
 }
 
-class AppConfig {
-  final String business;
-  final List<RewardTier> rewardTiers;
-  final int cycleDays;
+class Business {
+  final int id;
+  final String slug, name, logoUrl;
   final Color primaryColor;
-  final String logoUrl;
+  final int cycleDays;
+  final List<RewardTier> rewardTiers;
 
-  const AppConfig({
-    required this.business,
-    required this.rewardTiers,
-    required this.cycleDays,
-    required this.primaryColor,
+  const Business({
+    required this.id,
+    required this.slug,
+    required this.name,
     required this.logoUrl,
+    required this.primaryColor,
+    required this.cycleDays,
+    required this.rewardTiers,
   });
 
-  static AppConfig fallback() => const AppConfig(
-        business: 'Tarjeta de lealtad',
-        rewardTiers: [],
-        cycleDays: 30,
-        primaryColor: Color(0xFFE23B3B),
-        logoUrl: '',
+  int get maxStamps => rewardTiers.isEmpty
+      ? 0
+      : rewardTiers.map((t) => t.stampsRequired).reduce((a, b) => a > b ? a : b);
+
+  static Color _parseColor(String? raw) {
+    final h = (raw ?? '').replaceAll('#', '');
+    return h.length == 6 ? Color(int.parse('FF$h', radix: 16)) : const Color(0xFFE23B3B);
+  }
+
+  factory Business.fromJson(Map<String, dynamic> j) => Business(
+        id:           j['id'] ?? 0,
+        slug:         j['slug'] ?? '',
+        name:         j['name'] ?? j['business'] ?? '',
+        logoUrl:      j['logo_url'] ?? '',
+        primaryColor: _parseColor(j['primary_color']),
+        cycleDays:    j['cycle_days'] ?? 30,
+        rewardTiers:  (j['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList(),
       );
 
-  static AppConfig fromJson(Map<String, dynamic> j) {
-    Color color = const Color(0xFFE23B3B);
-    final raw = (j['primary_color'] as String? ?? '').replaceAll('#', '');
-    if (raw.length == 6) color = Color(int.parse('FF$raw', radix: 16));
-    final tiers = (j['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList();
-    return AppConfig(
-      business: j['business'] ?? 'Mi Negocio',
-      rewardTiers: tiers,
-      cycleDays: j['cycle_days'] ?? 30,
-      primaryColor: color,
-      logoUrl: j['logo_url'] ?? '',
-    );
-  }
+  Map<String, dynamic> toJson() => {
+        'id': id, 'slug': slug, 'name': name,
+        'logo_url': logoUrl,
+        'primary_color': '#${primaryColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+        'cycle_days': cycleDays,
+      };
+}
 
-  int get maxStamps => rewardTiers.isEmpty ? 0 : rewardTiers.map((t) => t.stampsRequired).reduce((a, b) => a > b ? a : b);
-  RewardTier? nextTier(int stamps) {
-    final pending = rewardTiers.where((t) => t.stampsRequired > stamps).toList();
-    return pending.isEmpty ? null : pending.first;
-  }
+// Tarjeta local: un negocio + token del cliente
+class LoyaltyCard {
+  final Business business;
+  final String token;
+  const LoyaltyCard({required this.business, required this.token});
+
+  Map<String, dynamic> toJson() => {'business': business.toJson(), 'token': token};
+
+  factory LoyaltyCard.fromJson(Map<String, dynamic> j) => LoyaltyCard(
+        business: Business.fromJson(j['business']),
+        token: j['token'],
+      );
 }
 
 class Api {
-  static Future<AppConfig> config() async {
-    final r = await http.get(Uri.parse('$apiBase/api/config'));
-    return AppConfig.fromJson(jsonDecode(r.body));
+  // ── Negocios ────────────────────────────────────────────────────────────────
+
+  static Future<List<Business>> listBusinesses() async {
+    final r = await http.get(Uri.parse('$apiBase/api/businesses'));
+    return (jsonDecode(r.body) as List).map((b) => Business.fromJson(b)).toList();
   }
 
-  static Future<String> join(String phone, String name) async {
+  static Future<Business> config(String slug) async {
+    final r = await http.get(Uri.parse('$apiBase/api/config?b=$slug'));
+    return Business.fromJson(jsonDecode(r.body));
+  }
+
+  // ── Clientes ────────────────────────────────────────────────────────────────
+
+  static Future<LoyaltyCard> join(String slug, String phone, String name) async {
     final r = await http.post(
       Uri.parse('$apiBase/api/join'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'phone': phone, 'name': name}),
+      body: jsonEncode({'business_slug': slug, 'phone': phone, 'name': name}),
     );
     final d = jsonDecode(r.body);
     if (r.statusCode != 200) throw d['error'] ?? 'Error';
-    return d['token'];
+    final biz = Business.fromJson(d['business']);
+    return LoyaltyCard(business: biz, token: d['token']);
   }
 
   static Future<Map<String, dynamic>> card(String token) async {
@@ -83,6 +105,8 @@ class Api {
     if (r.statusCode != 200) throw 'No encontrado';
     return jsonDecode(r.body);
   }
+
+  // ── Staff ───────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> stamp(String token, String pass) async {
     final r = await http.post(
@@ -96,56 +120,49 @@ class Api {
     return d;
   }
 
-  static Future<Map<String, dynamic>> adminStats(String pass) async {
-    final r = await http.get(Uri.parse('$apiBase/api/stats'),
+  static Future<Map<String, dynamic>> adminStats(String slug, String pass) async {
+    final r = await http.get(Uri.parse('$apiBase/api/$slug/stats'),
         headers: {'Authorization': 'Bearer $pass'});
     if (r.statusCode == 401) throw 'Clave incorrecta';
     return jsonDecode(r.body);
   }
 
-  static Future<List<dynamic>> adminCustomers(String pass) async {
-    final r = await http.get(Uri.parse('$apiBase/api/customers'),
+  static Future<List<dynamic>> adminCustomers(String slug, String pass) async {
+    final r = await http.get(Uri.parse('$apiBase/api/$slug/customers'),
         headers: {'Authorization': 'Bearer $pass'});
     if (r.statusCode == 401) throw 'Clave incorrecta';
     return jsonDecode(r.body);
   }
 
-  static Future<List<RewardTier>> getRewardTiers(String pass) async {
-    final r = await http.get(Uri.parse('$apiBase/api/reward-tiers'),
+  static Future<List<RewardTier>> getRewardTiers(String slug, String pass) async {
+    final r = await http.get(Uri.parse('$apiBase/api/$slug/reward-tiers'),
         headers: {'Authorization': 'Bearer $pass'});
     if (r.statusCode == 401) throw 'Clave incorrecta';
     return (jsonDecode(r.body) as List).map((t) => RewardTier.fromJson(t)).toList();
   }
 
-  static Future<List<RewardTier>> addRewardTier(String pass, int stamps, String desc) async {
-    final r = await http.post(Uri.parse('$apiBase/api/reward-tiers'),
+  static Future<List<RewardTier>> addRewardTier(String slug, String pass, int stamps, String desc) async {
+    final r = await http.post(Uri.parse('$apiBase/api/$slug/reward-tiers'),
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
         body: jsonEncode({'stamps_required': stamps, 'description': desc}));
     return (jsonDecode(r.body) as List).map((t) => RewardTier.fromJson(t)).toList();
   }
 
-  static Future<List<RewardTier>> updateRewardTier(String pass, int id, int stamps, String desc) async {
-    final r = await http.put(Uri.parse('$apiBase/api/reward-tiers/$id'),
+  static Future<List<RewardTier>> updateRewardTier(String slug, String pass, int id, int stamps, String desc) async {
+    final r = await http.put(Uri.parse('$apiBase/api/$slug/reward-tiers/$id'),
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
         body: jsonEncode({'stamps_required': stamps, 'description': desc}));
     return (jsonDecode(r.body) as List).map((t) => RewardTier.fromJson(t)).toList();
   }
 
-  static Future<List<RewardTier>> deleteRewardTier(String pass, int id) async {
-    final r = await http.delete(Uri.parse('$apiBase/api/reward-tiers/$id'),
+  static Future<List<RewardTier>> deleteRewardTier(String slug, String pass, int id) async {
+    final r = await http.delete(Uri.parse('$apiBase/api/$slug/reward-tiers/$id'),
         headers: {'Authorization': 'Bearer $pass'});
     return (jsonDecode(r.body) as List).map((t) => RewardTier.fromJson(t)).toList();
   }
 
-  static Future<Map<String, dynamic>> getSettings(String pass) async {
-    final r = await http.get(Uri.parse('$apiBase/api/settings'),
-        headers: {'Authorization': 'Bearer $pass'});
-    if (r.statusCode == 401) throw 'Clave incorrecta';
-    return jsonDecode(r.body);
-  }
-
-  static Future<Map<String, dynamic>> updateSettings(String pass, Map<String, dynamic> data) async {
-    final r = await http.put(Uri.parse('$apiBase/api/settings'),
+  static Future<Map<String, dynamic>> updateSettings(String slug, String pass, Map<String, dynamic> data) async {
+    final r = await http.put(Uri.parse('$apiBase/api/$slug/settings'),
         headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
         body: jsonEncode(data));
     if (r.statusCode == 401) throw 'Clave incorrecta';
