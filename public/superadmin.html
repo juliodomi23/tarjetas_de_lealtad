@@ -48,14 +48,6 @@
   .biz-stat .sn { font-size:1.3rem; font-weight:700; line-height:1; }
   .biz-stat .sl { color:#8b90a8; font-size:.7rem; margin-top:3px; }
 
-  .biz-pass { background:#111528; border-radius:10px; padding:9px 12px; margin-bottom:14px;
-    display:flex; align-items:center; gap:8px; font-size:.82rem; }
-  .biz-pass span { color:#8b90a8; white-space:nowrap; }
-  .biz-pass code { color:#f2f3f7; font-family:monospace; flex:1; }
-  .copy-btn { background:none; border:1px solid #2c3354; border-radius:6px;
-    color:#8b90a8; cursor:pointer; padding:3px 8px; font-size:.72rem; transition:all .2s; white-space:nowrap; }
-  .copy-btn:hover { border-color:#e23b3b; color:#e23b3b; }
-
   .biz-actions { display:flex; gap:8px; }
   .btn-panel { flex:1; background:#e23b3b; color:#fff; border:none; border-radius:10px;
     padding:9px 14px; font-size:.85rem; font-weight:600; cursor:pointer; font-family:inherit;
@@ -244,14 +236,10 @@
             <div class="biz-stat"><div class="sn">${b.total_stamps}</div><div class="sl">Sellos</div></div>
             <div class="biz-stat"><div class="sn">${b.new_today}</div><div class="sl">Nuevos hoy</div></div>
           </div>
-          <div class="biz-pass">
-            <span>Clave:</span>
-            <code>${b.admin_pass}</code>
-            <button class="copy-btn" onclick="copyText('${b.admin_pass}', this)">Copiar</button>
-          </div>
           <div class="biz-actions">
             <a class="btn-panel" href="/admin.html?b=${b.slug}" target="_blank">Ver panel</a>
             <button class="btn-edit" onclick="openEdit(${JSON.stringify(b).replace(/"/g,'&quot;')})">Editar</button>
+            <button class="btn-edit" onclick="changePass('${b.slug}')">Cambiar clave</button>
           </div>
         </div>`).join('')}
       </div>`;
@@ -318,6 +306,20 @@
     if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
   };
 
+  // ── Cambiar clave del personal ────────────────────────────────────────────────
+  async function changePass(slug) {
+    const nueva = prompt(`Nueva clave del personal (${slug}):`);
+    if (!nueva) return;
+    try {
+      await api(`/api/admin/businesses/${slug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_pass: nueva }),
+      });
+      alert('Clave actualizada. Compártela con el staff del negocio.');
+    } catch (e) { alert('Error: ' + e.message); }
+  }
+
   // ── Editar negocio ────────────────────────────────────────────────────────────
   function openEdit(b) {
     document.getElementById('e-slug').value  = b.slug;
@@ -361,15 +363,6 @@
       btn.disabled = false; btn.textContent = 'Guardar cambios';
     }
   };
-
-  // ── Utilidades ────────────────────────────────────────────────────────────────
-  function copyText(text, btn) {
-    navigator.clipboard.writeText(text).then(() => {
-      const orig = btn.textContent;
-      btn.textContent = 'Copiado';
-      setTimeout(() => { btn.textContent = orig; }, 1500);
-    });
-  }
 
   // ── Init ──────────────────────────────────────────────────────────────────────
   load();

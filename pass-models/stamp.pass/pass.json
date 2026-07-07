@@ -1,0 +1,35 @@
+{
+  "formatVersion": 1,
+  "passTypeIdentifier": "pass.placeholder",
+  "teamIdentifier": "PLACEHOLDER",
+  "organizationName": "Aurum",
+  "description": "Tarjeta de Lealtad",
+  "storeCard": {
+    "headerFields": [
+      { "key": "stamps", "label": "SELLOS", "value": "0" }
+    ],
+    "primaryFields": [
+      { "key": "name", "label": "CLIENTE", "value": "Cliente" }
+    ],
+    "secondaryFields": [
+      { "key": "premio", "label": "PRÓXIMO PREMIO", "value": "" }
+    ],
+    "auxiliaryFields": [
+      { "key": "left", "label": "FALTAN", "value": "" }
+    ],
+    "backFields": [
+      { "key": "howto",   "label": "¿Cómo usar?", "value": "Muestra el código QR en el mostrador para acumular sellos." },
+      { "key": "negocio", "label": "Negocio",     "value": "" }
+    ]
+  },
+  "barcodes": [
+    {
+      "format": "PKBarcodeFormatQR",
+      "message": "TOKEN",
+      "messageEncoding": "iso-8859-1"
+    }
+  ],
+  "backgroundColor":  "rgb(139,26,26)",
+  "foregroundColor":  "rgb(255,255,255)",
+  "labelColor":       "rgb(201,168,76)"
+}

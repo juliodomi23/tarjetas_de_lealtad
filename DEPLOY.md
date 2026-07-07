@@ -60,6 +60,22 @@ En el panel de Hostinger, agrega un registro A:
 
 ---
 
+## Respaldo diario de la base de datos
+
+```bash
+sudo apt install -y sqlite3
+mkdir -p /var/backups/lealtad
+crontab -e
+```
+
+Agrega esta línea (respaldo diario a las 3 AM, conserva 14 días):
+
+```
+0 3 * * * sqlite3 /var/www/lealtad/loyalty.db ".backup /var/backups/lealtad/loyalty-$(date +\%F).db" && find /var/backups/lealtad -name '*.db' -mtime +14 -delete
+```
+
+---
+
 ## Por cliente nuevo
 
 Cada negocio es una instancia separada. Copia el directorio, cambia el puerto y las variables en `ecosystem.config.js`, y agrega un nuevo bloque en nginx.

@@ -3,8 +3,9 @@ const path = require('path');
 const {
   openDb, listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
   join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
-  stats, listCustomers,
+  stats, listCustomers, verifyPass,
 } = require('./db');
+const { generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured } = require('./wallet');
 
 const PORT       = process.env.PORT || 3000;
 const SUPER_PASS = process.env.SUPER_PASS || 'super-cambiar';
@@ -20,15 +21,50 @@ const db = openDb(process.env.DB_FILE || 'loyalty.db', {
 });
 
 const app = express();
+app.set('trust proxy', 1); // nginx delante: usar la IP real del cliente para el rate-limit
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Middlewares ───────────────────────────────────────────────────────────────
 
-function superAdmin(req, res, next) {
+// ponytail: rate-limit en memoria por IP; pasar a express-rate-limit si hay varios procesos
+const failedAuth = new Map(); // ip -> { count, until }
+const MAX_FAILS = 10, BLOCK_MS = 15 * 60 * 1000;
+
+function authBlocked(req, res) {
+  const rec = failedAuth.get(req.ip);
+  if (rec && rec.count >= MAX_FAILS && Date.now() < rec.until) {
+    res.status(429).json({ error: 'Demasiados intentos, espera 15 minutos' });
+    return true;
+  }
+  return false;
+}
+
+function authFailed(req) {
+  const rec = failedAuth.get(req.ip) || { count: 0, until: 0 };
+  rec.count++;
+  rec.until = Date.now() + BLOCK_MS;
+  failedAuth.set(req.ip, rec);
+}
+
+function checkPass(req, res, verify) {
+  if (authBlocked(req, res)) return false;
   const pass = (req.headers.authorization || '').replace('Bearer ', '');
-  if (pass !== SUPER_PASS) return res.status(401).json({ error: 'No autorizado' });
-  next();
+  const ok = verify(pass);
+  if (!ok) { authFailed(req); res.status(401).json({ error: 'No autorizado' }); }
+  else failedAuth.delete(req.ip);
+  return ok;
+}
+
+// SUPER_PASS viene del entorno (no de la BD), se compara en texto plano tiempo-constante
+function superPassOk(pass) {
+  const crypto = require('crypto');
+  return pass.length === SUPER_PASS.length &&
+    crypto.timingSafeEqual(Buffer.from(pass), Buffer.from(SUPER_PASS));
+}
+
+function superAdmin(req, res, next) {
+  if (checkPass(req, res, superPassOk)) next();
 }
 
 function withBusiness(req, res, next) {
@@ -41,9 +77,7 @@ function withBusiness(req, res, next) {
 }
 
 function staff(req, res, next) {
-  const pass = (req.headers.authorization || '').replace('Bearer ', '');
-  if (pass !== req.biz.admin_pass) return res.status(401).json({ error: 'No autorizado' });
-  next();
+  if (checkPass(req, res, pass => verifyPass(pass, req.biz.admin_pass))) next();
 }
 
 // ── Negocios (público y super-admin) ─────────────────────────────────────────
@@ -80,7 +114,6 @@ app.get('/api/admin/businesses', superAdmin, (req, res) => {
     customers: db.prepare('SELECT COUNT(*) n FROM customers WHERE business_id=?').get(b.id).n,
     total_stamps: db.prepare('SELECT COUNT(*) n FROM stamps_log WHERE business_id=?').get(b.id).n,
     new_today: db.prepare(`SELECT COUNT(*) n FROM customers WHERE business_id=? AND date(created_at)=date('now','localtime')`).get(b.id).n,
-    admin_pass: db.prepare('SELECT admin_pass FROM businesses WHERE id=?').get(b.id).admin_pass,
   }));
   res.json(enriched);
 });
@@ -129,8 +162,7 @@ app.post('/api/stamp', (req, res) => {
   const customer = db.prepare('SELECT business_id FROM customers WHERE token=?').get(token);
   if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
-  const pass = (req.headers.authorization || '').replace('Bearer ', '');
-  if (pass !== biz.admin_pass) return res.status(401).json({ error: 'Clave incorrecta' });
+  if (!checkPass(req, res, pass => verifyPass(pass, biz.admin_pass))) return;
   try { res.json(addStamp(db, token, biz)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -166,6 +198,45 @@ app.put('/api/:slug/settings', withBusiness, staff, (req, res) => {
     cycle_days:    req.body.cycle_days !== undefined ? Number(req.body.cycle_days) : undefined,
   });
   res.json(biz);
+});
+
+// ── Wallet ─────────────────────────────────────────────────────────────────────
+
+// Página de registro / tarjeta del cliente
+app.get('/join', (_req, res) => res.sendFile(path.join(__dirname, 'public/join.html')));
+
+// Qué wallets están configurados (para la UI)
+app.get('/api/wallets', (_req, res) => res.json({ apple: appleConfigured(), google: googleConfigured() }));
+
+// Descarga .pkpass para Apple Wallet
+app.get('/api/pass/apple', async (req, res) => {
+  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.id AS business_id
+    FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
+  if (!c) return res.status(404).json({ error: 'No encontrado' });
+  try {
+    const buf = await generateApplePass(
+      { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
+      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url },
+      getRewardTiers(db, c.business_id),
+    );
+    res.set({ 'Content-Type': 'application/vnd.apple.pkpass', 'Content-Disposition': 'attachment; filename="aurum.pkpass"' });
+    res.send(buf);
+  } catch (e) { res.status(503).json({ error: e.message }); }
+});
+
+// Redirige al link de Google Wallet
+app.get('/api/pass/google', (req, res) => {
+  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.id AS business_id
+    FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
+  if (!c) return res.status(404).json({ error: 'No encontrado' });
+  try {
+    const url = googleWalletSaveUrl(
+      { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
+      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url },
+      getRewardTiers(db, c.business_id),
+    );
+    res.redirect(url);
+  } catch (e) { res.status(503).json({ error: e.message }); }
 });
 
 app.listen(PORT, () => console.log(`Lealtad multi-tenant en http://localhost:${PORT}`));

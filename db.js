@@ -8,6 +8,21 @@ function parseDbDate(s) {
   return new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
 }
 
+// ── Claves (scrypt) ───────────────────────────────────────────────────────────
+
+function hashPass(plain) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = crypto.scryptSync(String(plain), salt, 32).toString('hex');
+  return `scrypt:${salt}:${hash}`;
+}
+
+function verifyPass(plain, stored) {
+  if (!stored || !stored.startsWith('scrypt:')) return false;
+  const [, salt, hash] = stored.split(':');
+  const candidate = crypto.scryptSync(String(plain), salt, 32);
+  return crypto.timingSafeEqual(candidate, Buffer.from(hash, 'hex'));
+}
+
 function openDb(file = 'loyalty.db', seedBusiness = null) {
   const dir = path.dirname(path.resolve(file));
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -58,12 +73,16 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE reward_tiers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE stamps_log ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
 
+  // Migrar claves en texto plano a scrypt (despliegues anteriores)
+  db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
+    .forEach(b => db.prepare('UPDATE businesses SET admin_pass=? WHERE id=?').run(hashPass(b.admin_pass), b.id));
+
   // Sembrar negocio por defecto si no existe ninguno
   if (seedBusiness) {
     db.prepare(`INSERT OR IGNORE INTO businesses (slug,name,primary_color,logo_url,cycle_days,admin_pass)
       VALUES (?,?,?,?,?,?)`)
       .run(seedBusiness.slug, seedBusiness.name, seedBusiness.primary_color,
-           seedBusiness.logo_url, seedBusiness.cycle_days, seedBusiness.admin_pass);
+           seedBusiness.logo_url, seedBusiness.cycle_days, hashPass(seedBusiness.admin_pass));
   }
 
   return db;
@@ -82,14 +101,15 @@ function getBusinessBySlug(db, slug) {
 function createBusiness(db, { slug, name, primary_color = '#E23B3B', logo_url = '', cycle_days = 30, admin_pass }) {
   db.prepare(`INSERT INTO businesses (slug,name,primary_color,logo_url,cycle_days,admin_pass)
     VALUES (?,?,?,?,?,?)`)
-    .run(slug, name, primary_color, logo_url, cycle_days, admin_pass);
+    .run(slug, name, primary_color, logo_url, cycle_days, hashPass(admin_pass));
   return getBusinessBySlug(db, slug);
 }
 
 function updateBusiness(db, slug, fields) {
-  const allowed = ['name', 'primary_color', 'logo_url', 'cycle_days'];
+  const allowed = ['name', 'primary_color', 'logo_url', 'cycle_days', 'admin_pass'];
   const sets = allowed.filter(k => fields[k] !== undefined).map(k => `${k}=?`).join(',');
-  const vals = allowed.filter(k => fields[k] !== undefined).map(k => fields[k]);
+  const vals = allowed.filter(k => fields[k] !== undefined)
+    .map(k => k === 'admin_pass' ? hashPass(fields[k]) : fields[k]);
   if (!sets) return getBusinessBySlug(db, slug);
   db.prepare(`UPDATE businesses SET ${sets} WHERE slug=?`).run(...vals, slug);
   return getBusinessBySlug(db, slug);
@@ -192,7 +212,7 @@ function listCustomers(db, businessId) {
 }
 
 module.exports = {
-  openDb, parseDbDate,
+  openDb, parseDbDate, hashPass, verifyPass,
   listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
   normPhone, join,
   getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,

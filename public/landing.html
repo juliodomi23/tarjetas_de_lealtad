@@ -1,0 +1,1010 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Aurum — Tarjetas de Lealtad Digital</title>
+  <meta name="description" content="Aurum: tarjetas de lealtad digital para cualquier negocio. Sin papel, sin complicaciones. Tus clientes regresan. Siempre." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,wght@0,400;0,600;0,700;1,400&family=Jost:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #070101;
+      --gold:     #C9A84C;
+      --gold-lt:  #F0D880;
+      --gold-dk:  #9A7A2E;
+      --red:      #8B1A1A;
+      --text:     #F0EAD6;
+      --muted:    #9A8E7A;
+      --line:     rgba(201,168,76,0.15);
+      --r:        16px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Jost', sans-serif;
+      font-size: 16px;
+      line-height: 1.65;
+      overflow-x: hidden;
+    }
+
+    /* ── Canvas de partículas ── */
+    #particles-canvas {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      opacity: .55;
+    }
+
+    /* ── Fondo animado ── */
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background:
+        radial-gradient(ellipse 70% 55% at 50% -10%, rgba(139,26,26,.28) 0%, transparent 65%),
+        radial-gradient(ellipse 45% 35% at 85% 85%, rgba(100,18,18,.18) 0%, transparent 60%),
+        radial-gradient(ellipse 30% 25% at 15% 70%, rgba(80,14,14,.12) 0%, transparent 55%);
+      animation: bgShift 8s ease-in-out infinite alternate;
+    }
+    @keyframes bgShift {
+      0%   { opacity: 1; }
+      50%  { opacity: .7; }
+      100% { opacity: 1; }
+    }
+
+    section { position: relative; z-index: 1; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+
+    /* ── Gold shimmer text ── */
+    .gold-text {
+      background: linear-gradient(90deg, var(--gold-dk) 0%, var(--gold-lt) 30%, var(--gold) 50%, var(--gold-lt) 70%, var(--gold-dk) 100%);
+      background-size: 200% auto;
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      animation: shimmer 4s linear infinite;
+    }
+    @keyframes shimmer {
+      0%   { background-position: 0% center; }
+      100% { background-position: 200% center; }
+    }
+
+    /* ── Fade-up ── */
+    .fade-up {
+      opacity: 0;
+      transform: translateY(32px);
+      transition: opacity .7s cubic-bezier(.22,1,.36,1), transform .7s cubic-bezier(.22,1,.36,1);
+    }
+    .fade-up.visible { opacity: 1; transform: translateY(0); }
+    @media (prefers-reduced-motion: reduce) {
+      .fade-up { opacity: 1; transform: none; transition: none; }
+      .gold-text { animation: none; }
+      .bg-glow   { animation: none; }
+    }
+
+    /* ════════════════════════
+       NAVBAR
+    ════════════════════════ */
+    nav {
+      position: fixed;
+      top: 16px; left: 50%; transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      gap: 32px;
+      padding: 12px 28px;
+      background: rgba(7,1,1,.75);
+      border: 1px solid var(--line);
+      border-radius: 100px;
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+    }
+    .nav-brand {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 1.1rem;
+      letter-spacing: .14em;
+      background: linear-gradient(90deg, var(--gold-lt), var(--gold));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .nav-links { display: flex; gap: 24px; }
+    .nav-links a {
+      font-size: .8rem;
+      letter-spacing: .08em;
+      color: var(--muted);
+      text-decoration: none;
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+    .nav-cta {
+      padding: 8px 20px;
+      background: linear-gradient(135deg, var(--gold-lt), var(--gold));
+      color: #0a0202;
+      font-family: 'Jost', sans-serif;
+      font-size: .78rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      border-radius: 100px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: filter .2s, transform .2s;
+    }
+    .nav-cta:hover { filter: brightness(1.12); transform: translateY(-1px); }
+    @media (max-width: 640px) {
+      .nav-links { display: none; }
+      nav { gap: 16px; padding: 10px 20px; }
+    }
+
+    /* ════════════════════════
+       HERO
+    ════════════════════════ */
+    #hero {
+      min-height: 100svh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 24px 80px;
+    }
+
+    /* Anillo de luz giratorio detrás de la estrella */
+    .star-outer {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      margin-bottom: 36px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .star-ring {
+      position: absolute;
+      inset: -12px;
+      border-radius: 50%;
+      background: conic-gradient(from 0deg, transparent 60%, rgba(201,168,76,.6) 80%, rgba(139,26,26,.8) 90%, transparent 100%);
+      animation: spin 4s linear infinite;
+      filter: blur(6px);
+    }
+    .star-ring2 {
+      position: absolute;
+      inset: -20px;
+      border-radius: 50%;
+      background: conic-gradient(from 180deg, transparent 60%, rgba(201,168,76,.3) 80%, rgba(139,26,26,.4) 90%, transparent 100%);
+      animation: spin 7s linear infinite reverse;
+      filter: blur(10px);
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .star-pulse {
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(201,168,76,.18) 0%, rgba(139,26,26,.22) 50%, transparent 70%);
+      animation: pulse 2.8s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1);   opacity: .6; }
+      50%       { transform: scale(1.15); opacity: 1; }
+    }
+
+    .star-img {
+      position: relative;
+      z-index: 2;
+      width: 160px;
+      height: 160px;
+      object-fit: contain;
+      border-radius: 32px;
+      filter: drop-shadow(0 0 24px rgba(201,168,76,.5)) drop-shadow(0 0 48px rgba(139,26,26,.6));
+      animation: starFloat 5s ease-in-out infinite;
+    }
+    .star-fallback {
+      display: none;
+      font-size: 110px;
+      line-height: 1;
+      background: linear-gradient(135deg, var(--gold-lt), var(--gold), var(--gold-dk));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      position: relative;
+      z-index: 2;
+    }
+    @keyframes starFloat {
+      0%, 100% { transform: translateY(0);  }
+      50%       { transform: translateY(-8px); }
+    }
+
+    h1.brand {
+      font-family: 'Bodoni Moda', serif;
+      font-size: clamp(4rem, 12vw, 8rem);
+      font-weight: 700;
+      letter-spacing: .2em;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+
+    .brand-sub {
+      font-size: clamp(.75rem, 2vw, .9rem);
+      letter-spacing: .4em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 28px;
+    }
+
+    .tagline {
+      font-size: clamp(1.1rem, 3vw, 1.45rem);
+      font-weight: 300;
+      color: var(--muted);
+      max-width: 500px;
+      margin-bottom: 44px;
+      letter-spacing: .03em;
+    }
+    .tagline strong { color: var(--text); font-weight: 600; }
+
+    .hero-btns { display: flex; gap: 16px; flex-wrap: wrap; justify-content: center; }
+
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 36px;
+      background: linear-gradient(135deg, var(--gold-lt), var(--gold));
+      color: #0a0202;
+      font-family: 'Jost', sans-serif;
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: .06em;
+      border-radius: 100px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .25s, box-shadow .25s, filter .25s;
+      box-shadow: 0 4px 28px rgba(201,168,76,.4), 0 0 0 0 rgba(201,168,76,.3);
+      animation: ctaPulse 3s ease-in-out infinite;
+    }
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      filter: brightness(1.12);
+      box-shadow: 0 12px 40px rgba(201,168,76,.6);
+      animation: none;
+    }
+    @keyframes ctaPulse {
+      0%, 100% { box-shadow: 0 4px 28px rgba(201,168,76,.4), 0 0 0 0 rgba(201,168,76,.25); }
+      50%       { box-shadow: 0 4px 28px rgba(201,168,76,.4), 0 0 0 12px rgba(201,168,76,0); }
+    }
+
+    .btn-ghost {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 16px 32px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      font-family: 'Jost', sans-serif;
+      font-size: 1rem;
+      font-weight: 400;
+      letter-spacing: .04em;
+      border-radius: 100px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: border-color .25s, color .25s, background .25s;
+    }
+    .btn-ghost:hover { border-color: rgba(201,168,76,.5); color: var(--gold); background: rgba(201,168,76,.05); }
+
+    /* Stat pills bajo el CTA */
+    .hero-stats {
+      display: flex;
+      gap: 32px;
+      margin-top: 60px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .stat { text-align: center; }
+    .stat-num {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 1.8rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .stat-label { font-size: .75rem; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; margin-top: 4px; }
+    .stat-div { width: 1px; background: var(--line); align-self: stretch; }
+
+    /* Scroll hint */
+    .scroll-hint {
+      margin-top: 56px;
+      color: var(--muted);
+      font-size: .72rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      display: flex; flex-direction: column; align-items: center; gap: 10px;
+    }
+    .scroll-arrow { animation: scrollBounce 2s ease-in-out infinite; }
+    @keyframes scrollBounce {
+      0%, 100% { transform: translateY(0); opacity: .5; }
+      50%       { transform: translateY(7px); opacity: 1; }
+    }
+
+    /* ════════════════════════
+       SECTION SHARED
+    ════════════════════════ */
+    .section-label {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    h2 {
+      font-family: 'Bodoni Moda', serif;
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 600;
+      line-height: 1.18;
+      margin-bottom: 16px;
+    }
+    .section-sub {
+      color: var(--muted);
+      font-size: 1.05rem;
+      max-width: 540px;
+      margin-bottom: 64px;
+    }
+    .sep {
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--line), transparent);
+    }
+
+    /* ════════════════════════
+       HOW IT WORKS
+    ════════════════════════ */
+    #how { padding: 110px 0; }
+
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2px;
+      background: var(--line);
+      border-radius: calc(var(--r) + 2px);
+      overflow: hidden;
+    }
+    .step {
+      background: rgba(7,1,1,.97);
+      padding: 44px 36px;
+      position: relative;
+      overflow: hidden;
+      transition: background .3s;
+    }
+    .step::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(201,168,76,.08) 0%, transparent 60%);
+      opacity: 0;
+      transition: opacity .4s;
+    }
+    .step:hover { background: rgba(20,5,5,.97); }
+    .step:hover::after { opacity: 1; }
+
+    .step-num {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 5rem;
+      font-weight: 700;
+      line-height: 1;
+      position: absolute;
+      top: 16px; right: 24px;
+      background: linear-gradient(135deg, rgba(201,168,76,.15), rgba(201,168,76,.05));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      transition: opacity .3s;
+    }
+    .step:hover .step-num { opacity: .5; }
+
+    .step-icon-wrap {
+      width: 52px; height: 52px;
+      border-radius: 14px;
+      background: rgba(201,168,76,.08);
+      border: 1px solid rgba(201,168,76,.2);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 24px;
+      transition: background .3s, border-color .3s;
+    }
+    .step:hover .step-icon-wrap { background: rgba(201,168,76,.14); border-color: rgba(201,168,76,.4); }
+    .step-icon { width: 26px; height: 26px; color: var(--gold); }
+
+    .step h3 {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 1.3rem;
+      margin-bottom: 12px;
+    }
+    .step p { color: var(--muted); font-size: .95rem; line-height: 1.65; }
+
+    /* ════════════════════════
+       BUSINESS TYPES
+    ════════════════════════ */
+    #negocios { padding: 110px 0; }
+
+    /* 4 columnas exactas para que 8 items llenen 2 filas parejas */
+    .biz-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-top: 48px;
+    }
+    @media (max-width: 720px) {
+      .biz-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (min-width: 721px) and (max-width: 900px) {
+      .biz-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .biz-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      padding: 28px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--r);
+      background: rgba(255,255,255,.02);
+      transition: border-color .3s, background .3s, transform .3s, box-shadow .3s;
+      cursor: default;
+      position: relative;
+      overflow: hidden;
+    }
+    .biz-card::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(circle at 50% 0%, rgba(201,168,76,.1) 0%, transparent 70%);
+      opacity: 0;
+      transition: opacity .3s;
+    }
+    .biz-card:hover {
+      border-color: rgba(201,168,76,.45);
+      background: rgba(201,168,76,.05);
+      transform: translateY(-5px);
+      box-shadow: 0 12px 32px rgba(139,26,26,.25);
+    }
+    .biz-card:hover::before { opacity: 1; }
+
+    .biz-icon { width: 34px; height: 34px; color: var(--gold); position: relative; z-index: 1; }
+    .biz-label {
+      font-size: .82rem;
+      font-weight: 500;
+      letter-spacing: .04em;
+      color: var(--muted);
+      text-align: center;
+      position: relative;
+      z-index: 1;
+      transition: color .3s;
+    }
+    .biz-card:hover .biz-label { color: var(--text); }
+
+    /* ════════════════════════
+       PRICING
+    ════════════════════════ */
+    #pricing { padding: 110px 0; text-align: center; }
+
+    .pricing-wrap {
+      max-width: 560px;
+      margin: 48px auto 0;
+      position: relative;
+    }
+
+    .pricing-card {
+      position: relative;
+      z-index: 2;
+      background: rgba(12,3,3,.97);
+      border-radius: 24px;
+      border: 1px solid rgba(201,168,76,.45);
+      padding: 52px 44px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(201,168,76,.12),
+        0 0 28px rgba(201,168,76,.15),
+        0 0 60px rgba(139,26,26,.2),
+        inset 0 1px 0 rgba(201,168,76,.2);
+    }
+    .pricing-card::before {
+      content: '';
+      position: absolute;
+      top: -80px; left: 50%;
+      transform: translateX(-50%);
+      width: 260px; height: 160px;
+      background: radial-gradient(ellipse, rgba(201,168,76,.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .pricing-badge {
+      display: inline-block;
+      background: linear-gradient(135deg, var(--gold-lt), var(--gold));
+      color: #0a0202;
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      padding: 6px 16px;
+      border-radius: 100px;
+      margin-bottom: 36px;
+    }
+
+    .price-row { margin-bottom: 6px; }
+    .price-label {
+      font-size: .72rem;
+      font-weight: 600;
+      letter-spacing: .2em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .price-amount {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 2.4rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .price-currency { font-size: 1rem; color: var(--muted); font-family: 'Jost', sans-serif; font-weight: 400; }
+
+    .price-divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 24px 0;
+      color: var(--muted);
+      font-size: .72rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+    }
+    .price-divider::before, .price-divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--line);
+    }
+
+    .price-monthly-num {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 4.5rem;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .price-monthly-sub {
+      font-family: 'Jost', sans-serif;
+      font-size: 1rem;
+      color: var(--muted);
+      font-weight: 400;
+    }
+    .price-note { color: var(--muted); font-size: .82rem; margin-top: 6px; }
+
+    .benefits {
+      list-style: none;
+      margin: 36px 0 44px;
+      text-align: left;
+      display: flex; flex-direction: column; gap: 16px;
+    }
+    .benefits li {
+      display: flex; align-items: center; gap: 14px;
+      font-size: .97rem; color: var(--text);
+    }
+    .check-icon { color: var(--gold); flex-shrink: 0; }
+
+    .btn-wa {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      width: 100%;
+      padding: 18px 36px;
+      background: linear-gradient(135deg, var(--gold-lt), var(--gold));
+      color: #0a0202;
+      font-family: 'Jost', sans-serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: .05em;
+      border-radius: 100px;
+      text-decoration: none;
+      cursor: pointer;
+      transition: transform .25s, filter .25s, box-shadow .25s;
+      box-shadow: 0 6px 32px rgba(201,168,76,.4);
+    }
+    .btn-wa:hover {
+      transform: translateY(-3px);
+      filter: brightness(1.12);
+      box-shadow: 0 12px 44px rgba(201,168,76,.6);
+    }
+    .wa-icon { width: 22px; height: 22px; flex-shrink: 0; }
+
+    /* ════════════════════════
+       FOOTER
+    ════════════════════════ */
+    footer {
+      padding: 60px 24px 40px;
+      text-align: center;
+      position: relative;
+      z-index: 1;
+    }
+    footer::before {
+      content: '';
+      display: block;
+      width: 100%;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--line), transparent);
+      margin-bottom: 48px;
+    }
+
+    .footer-star {
+      width: 64px; height: 64px;
+      margin: 0 auto 20px;
+      filter: drop-shadow(0 0 16px rgba(201,168,76,.45)) drop-shadow(0 0 32px rgba(139,26,26,.5));
+    }
+    .footer-star img { width: 100%; height: 100%; object-fit: contain; border-radius: 14px; }
+
+    .footer-brand-name {
+      font-family: 'Bodoni Moda', serif;
+      font-size: 1.5rem;
+      letter-spacing: .14em;
+      margin-bottom: 6px;
+    }
+    .footer-sub { color: var(--muted); font-size: .85rem; margin-bottom: 20px; }
+    .footer-wa {
+      display: inline-flex; align-items: center; gap: 8px;
+      color: var(--gold);
+      text-decoration: none;
+      font-size: .9rem;
+      letter-spacing: .04em;
+      transition: color .2s;
+    }
+    .footer-wa:hover { color: var(--gold-lt); }
+    .footer-copy {
+      margin-top: 36px;
+      color: rgba(154,142,122,.45);
+      font-size: .72rem;
+      letter-spacing: .06em;
+    }
+
+    @media (max-width: 600px) {
+      .pricing-card { padding: 40px 24px; }
+      .price-monthly-num { font-size: 3.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="particles-canvas" aria-hidden="true"></canvas>
+<div class="bg-glow" aria-hidden="true"></div>
+
+<!-- ════ NAVBAR ════ -->
+<nav aria-label="Navegación principal">
+  <span class="nav-brand">AURUM</span>
+  <div class="nav-links">
+    <a href="#how">Cómo funciona</a>
+    <a href="#negocios">Tu negocio</a>
+    <a href="#pricing">Precio</a>
+  </div>
+  <a
+    href="https://wa.me/529932061338?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Aurum"
+    class="nav-cta"
+    target="_blank" rel="noopener"
+    aria-label="Contactar por WhatsApp"
+  >Contactar</a>
+</nav>
+
+<!-- ════ HERO ════ -->
+<section id="hero">
+  <div class="star-outer fade-up">
+    <div class="star-ring2" aria-hidden="true"></div>
+    <div class="star-ring"  aria-hidden="true"></div>
+    <div class="star-pulse" aria-hidden="true"></div>
+    <img
+      class="star-img"
+      src="../Logo.jpg"
+      alt="Aurum — estrella dorada"
+      onerror="this.style.display='none'; this.nextElementSibling.style.display='block';"
+    />
+    <span class="star-fallback" aria-hidden="true">★</span>
+  </div>
+
+  <h1 class="brand gold-text fade-up" style="transition-delay:.1s">AURUM</h1>
+  <p class="brand-sub fade-up" style="transition-delay:.18s">Tarjetas de Lealtad Digital</p>
+
+  <p class="tagline fade-up" style="transition-delay:.26s">
+    <strong>Tus clientes regresan.</strong> Siempre.<br />
+    Sin tarjetas de papel. Sin puntos que se pierden.
+  </p>
+
+  <div class="hero-btns fade-up" style="transition-delay:.34s">
+    <a
+      href="https://wa.me/529932061338?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Aurum"
+      class="btn-primary"
+      target="_blank" rel="noopener"
+      aria-label="Contactar por WhatsApp"
+    >
+      <svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+      Quiero Aurum para mi negocio
+    </a>
+    <a href="#how" class="btn-ghost">
+      Ver cómo funciona
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+    </a>
+  </div>
+
+  <div class="hero-stats fade-up" style="transition-delay:.44s" aria-label="Características destacadas">
+    <div class="stat">
+      <p class="stat-num gold-text">100%</p>
+      <p class="stat-label">Digital</p>
+    </div>
+    <div class="stat-div" aria-hidden="true"></div>
+    <div class="stat">
+      <p class="stat-num gold-text">Sin</p>
+      <p class="stat-label">contratos</p>
+    </div>
+    <div class="stat-div" aria-hidden="true"></div>
+    <div class="stat">
+      <p class="stat-num gold-text">24/7</p>
+      <p class="stat-label">Soporte</p>
+    </div>
+  </div>
+
+  <div class="scroll-hint fade-up" style="transition-delay:.56s" aria-hidden="true">
+    <span>Descubre más</span>
+    <svg class="scroll-arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="6 9 12 15 18 9"/>
+    </svg>
+  </div>
+</section>
+
+<div class="sep" aria-hidden="true"></div>
+
+<!-- ════ HOW IT WORKS ════ -->
+<section id="how">
+  <div class="container">
+    <p class="section-label fade-up">Así funciona</p>
+    <h2 class="fade-up" style="transition-delay:.05s">
+      Tan fácil como<br /><span class="gold-text">tres pasos</span>
+    </h2>
+    <p class="section-sub fade-up" style="transition-delay:.1s">
+      Cero complicaciones. Tu cliente lo entiende en segundos, tú lo configuras en minutos.
+    </p>
+
+    <div class="steps">
+      <div class="step fade-up" style="transition-delay:.05s">
+        <span class="step-num" aria-hidden="true">01</span>
+        <div class="step-icon-wrap">
+          <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+            <path d="M14 14h3v3m0 4h4v-4m-4 0h-3"/>
+          </svg>
+        </div>
+        <h3>Escanea el QR</h3>
+        <p>Tu cliente escanea el código QR en el mostrador con la cámara de su celular. Sin descargar nada obligatorio.</p>
+      </div>
+
+      <div class="step fade-up" style="transition-delay:.15s">
+        <span class="step-num" aria-hidden="true">02</span>
+        <div class="step-icon-wrap">
+          <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
+          </svg>
+        </div>
+        <h3>Acumula sellos</h3>
+        <p>Cada compra suma un sello digital. El cliente ve su progreso en tiempo real y eso lo hace volver.</p>
+      </div>
+
+      <div class="step fade-up" style="transition-delay:.25s">
+        <span class="step-num" aria-hidden="true">03</span>
+        <div class="step-icon-wrap">
+          <svg class="step-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M20 12V22H4V12"/><path d="M22 7H2v5h20V7z"/>
+            <path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 010-5C11 2 12 7 12 7z"/>
+            <path d="M12 7h4.5a2.5 2.5 0 000-5C13 2 12 7 12 7z"/>
+          </svg>
+        </div>
+        <h3>Canjea su premio</h3>
+        <p>Al completar la tarjeta, tú defines el premio y validas desde tu panel. Cliente feliz, cliente que regresa.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep" aria-hidden="true"></div>
+
+<!-- ════ BUSINESS TYPES ════ -->
+<section id="negocios">
+  <div class="container">
+    <p class="section-label fade-up">Para cualquier negocio</p>
+    <h2 class="fade-up" style="transition-delay:.05s">
+      Si tienes clientes,<br /><span class="gold-text">Aurum es para ti</span>
+    </h2>
+    <p class="section-sub fade-up" style="transition-delay:.1s">
+      No importa el giro. No importa el tamaño. Si quieres que tus clientes regresen, Aurum funciona.
+    </p>
+
+    <div class="biz-grid">
+      <div class="biz-card fade-up" style="transition-delay:.04s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8h1a4 4 0 010 8h-1"/><path d="M2 8h16v9a4 4 0 01-4 4H6a4 4 0 01-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+        <span class="biz-label">Cafetería</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.08s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        <span class="biz-label">Salón de belleza</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.12s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 002-2V2"/><path d="M7 2v20"/><path d="M21 15V2s-5 2-5 8v7c0 1.1.9 2 2 2h2a2 2 0 002-2z"/></svg>
+        <span class="biz-label">Restaurante</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.16s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5h11"/><path d="M6.5 17.5h11"/><rect x="2" y="4" width="4" height="4" rx="1"/><rect x="18" y="4" width="4" height="4" rx="1"/><rect x="2" y="15" width="4" height="4" rx="1"/><rect x="18" y="15" width="4" height="4" rx="1"/></svg>
+        <span class="biz-label">Gym</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.2s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 3v18M18 3v18M6 8h12M6 16h12"/></svg>
+        <span class="biz-label">Barbería</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.24s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6c0 0 1-2 6-2s9 4 9 4H3"/><path d="M3 6v6c0 3 4 6 9 6s9-3 9-6V6"/><path d="M8 12h8"/></svg>
+        <span class="biz-label">Taquería</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.28s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22c4 0 8-3.5 8-8 0-2.5-1-4.5-3-6-1 2-2.5 3-4 3-2 0-3.5-1.5-4-3-2 1.5-3 3.5-3 6 0 4.5 4 8 6 8z"/><path d="M12 7V2"/><path d="M9 5l3-3 3 3"/></svg>
+        <span class="biz-label">Spa</span>
+      </div>
+      <div class="biz-card fade-up" style="transition-delay:.32s">
+        <svg class="biz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 01-8 0"/></svg>
+        <span class="biz-label">Tu negocio</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="sep" aria-hidden="true"></div>
+
+<!-- ════ PRICING ════ -->
+<section id="pricing">
+  <div class="container">
+    <p class="section-label fade-up">Precio</p>
+    <h2 class="fade-up" style="transition-delay:.05s">
+      Simple y <span class="gold-text">sin sorpresas</span>
+    </h2>
+    <p class="section-sub fade-up" style="transition-delay:.1s; margin: 0 auto 0;">
+      7 días gratis para probarlo. Sin setup, sin contratos, sin letras chiquitas.
+    </p>
+
+    <div class="pricing-wrap fade-up" style="transition-delay:.18s">
+      <div class="pricing-card">
+        <span class="pricing-badge">7 días gratis · sin tarjeta</span>
+
+        <p class="price-monthly-num gold-text">$500 <span class="price-monthly-sub">MXN / mes</span></p>
+        <p class="price-note">Sin setup · sin contrato mínimo · cancela cuando quieras</p>
+
+        <ul class="benefits">
+          <li>
+            <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            App personalizada con tu logo y colores
+          </li>
+          <li>
+            <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Panel de administración en tiempo real
+          </li>
+          <li>
+            <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            QR listo para imprimir en tu mostrador
+          </li>
+          <li>
+            <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Soporte incluido por WhatsApp
+          </li>
+          <li>
+            <svg class="check-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+            Sin contratos — cancela cuando quieras
+          </li>
+        </ul>
+
+        <a
+          href="https://wa.me/529932061338?text=Hola%2C%20quiero%20saber%20m%C3%A1s%20sobre%20Aurum%20para%20mi%20negocio"
+          class="btn-wa"
+          target="_blank" rel="noopener"
+          aria-label="Contactar por WhatsApp para obtener Aurum"
+        >
+          <svg class="wa-icon" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          Quiero Aurum para mi negocio
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ════ FOOTER ════ -->
+<footer>
+  <div class="footer-star">
+    <img
+      src="../Logo.jpg"
+      alt=""
+      aria-hidden="true"
+      onerror="this.style.display='none';"
+    />
+  </div>
+  <p class="footer-brand-name gold-text">AURUM</p>
+  <p class="footer-sub">Un producto de <strong style="color:var(--text)">Ámbar Rojo Studios</strong></p>
+  <a
+    href="https://wa.me/529932061338"
+    class="footer-wa"
+    target="_blank" rel="noopener"
+    aria-label="WhatsApp de Aurum"
+  >
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+    +52 993 206 1338
+  </a>
+  <p class="footer-copy">© 2026 Ámbar Rojo Studios · Todos los derechos reservados</p>
+</footer>
+
+<script>
+  /* ── Partículas flotantes ── */
+  (function () {
+    const canvas = document.getElementById('particles-canvas');
+    const ctx    = canvas.getContext('2d');
+    let W, H, particles;
+
+    const GOLD   = [201, 168, 76];
+    const RED    = [139, 26, 26];
+    const N      = 55;
+
+    function resize() {
+      W = canvas.width  = window.innerWidth;
+      H = canvas.height = window.innerHeight;
+    }
+
+    function rand(a, b) { return a + Math.random() * (b - a); }
+
+    function mkParticle() {
+      const isGold = Math.random() > .35;
+      const [r,g,b] = isGold ? GOLD : RED;
+      return {
+        x: rand(0, W),
+        y: rand(0, H),
+        r: rand(.6, 2.4),
+        vx: rand(-.18, .18),
+        vy: rand(-.28, -.06),
+        alpha: rand(.15, .55),
+        dAlpha: rand(.003, .008) * (Math.random() > .5 ? 1 : -1),
+        col: `${r},${g},${b}`,
+      };
+    }
+
+    function init() { particles = Array.from({ length: N }, mkParticle); }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+      particles.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        p.alpha += p.dAlpha;
+        if (p.alpha <= .08 || p.alpha >= .6) p.dAlpha *= -1;
+        if (p.y < -10) { p.y = H + 10; p.x = rand(0, W); }
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(${p.col},${p.alpha})`;
+        ctx.fill();
+      });
+      requestAnimationFrame(draw);
+    }
+
+    resize();
+    init();
+    draw();
+    window.addEventListener('resize', () => { resize(); init(); });
+  })();
+
+  /* ── Fade-up observer ── */
+  const observer = new IntersectionObserver(
+    entries => entries.forEach(e => { if (e.isIntersecting) e.target.classList.add('visible'); }),
+    { threshold: .1, rootMargin: '0px 0px -40px 0px' }
+  );
+  document.querySelectorAll('.fade-up').forEach(el => observer.observe(el));
+</script>
+</body>
+</html>
