@@ -17,8 +17,9 @@ class RewardTier {
 
 class Business {
   final int id;
-  final String slug, name, logoUrl;
+  final String slug, name, logoUrl, cardBgImage, tagline;
   final Color primaryColor;
+  final Color? cardBg, cardTextColor; // null = diseño por defecto
   final int cycleDays;
   final List<RewardTier> rewardTiers;
 
@@ -28,6 +29,10 @@ class Business {
     required this.name,
     required this.logoUrl,
     required this.primaryColor,
+    this.cardBg,
+    this.cardBgImage = '',
+    this.cardTextColor,
+    this.tagline = '',
     required this.cycleDays,
     required this.rewardTiers,
   });
@@ -36,25 +41,39 @@ class Business {
       ? 0
       : rewardTiers.map((t) => t.stampsRequired).reduce((a, b) => a > b ? a : b);
 
-  static Color _parseColor(String? raw) {
+  static Color _parseColor(String? raw) => _tryColor(raw) ?? const Color(0xFFE23B3B);
+
+  static Color? _tryColor(String? raw) {
     final h = (raw ?? '').replaceAll('#', '');
-    return h.length == 6 ? Color(int.parse('FF$h', radix: 16)) : const Color(0xFFE23B3B);
+    if (h.length != 6) return null;
+    final v = int.tryParse(h, radix: 16);
+    return v == null ? null : Color(0xFF000000 | v);
   }
 
+  static String hex(Color c) => '#${c.toARGB32().toRadixString(16).substring(2).toUpperCase()}';
+
   factory Business.fromJson(Map<String, dynamic> j) => Business(
-        id:           j['id'] ?? 0,
-        slug:         j['slug'] ?? '',
-        name:         j['name'] ?? j['business'] ?? '',
-        logoUrl:      j['logo_url'] ?? '',
-        primaryColor: _parseColor(j['primary_color']),
-        cycleDays:    j['cycle_days'] ?? 30,
-        rewardTiers:  (j['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList(),
+        id:            j['id'] ?? 0,
+        slug:          j['slug'] ?? '',
+        name:          j['name'] ?? j['business'] ?? '',
+        logoUrl:       j['logo_url'] ?? '',
+        primaryColor:  _parseColor(j['primary_color']),
+        cardBg:        _tryColor(j['card_bg']),
+        cardBgImage:   j['card_bg_image'] ?? '',
+        cardTextColor: _tryColor(j['card_text_color']),
+        tagline:       j['tagline'] ?? '',
+        cycleDays:     j['cycle_days'] ?? 30,
+        rewardTiers:   (j['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList(),
       );
 
   Map<String, dynamic> toJson() => {
         'id': id, 'slug': slug, 'name': name,
         'logo_url': logoUrl,
-        'primary_color': '#${primaryColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}',
+        'primary_color': hex(primaryColor),
+        'card_bg': cardBg != null ? hex(cardBg!) : '',
+        'card_bg_image': cardBgImage,
+        'card_text_color': cardTextColor != null ? hex(cardTextColor!) : '',
+        'tagline': tagline,
         'cycle_days': cycleDays,
       };
 }

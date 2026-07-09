@@ -87,6 +87,7 @@ app.get('/api/businesses', (req, res) =>
   res.json(listBusinesses(db).map(b => ({
     id: b.id, slug: b.slug, name: b.name,
     primary_color: b.primary_color, logo_url: b.logo_url,
+    card_bg: b.card_bg, card_bg_image: b.card_bg_image, card_text_color: b.card_text_color, tagline: b.tagline,
   }))));
 
 app.post('/api/businesses', superAdmin, (req, res) => {
@@ -102,8 +103,9 @@ app.post('/api/businesses', superAdmin, (req, res) => {
 app.put('/api/admin/businesses/:slug', superAdmin, (req, res) => {
   const biz = getBusinessBySlug(db, req.params.slug);
   if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
-  const updated = updateBusiness(db, req.params.slug, req.body);
-  res.json(updated);
+  try {
+    res.json(updateBusiness(db, req.params.slug, req.body));
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Vista enriquecida para el panel de Ámbar Rojo (incluye métricas y admin_pass)
@@ -125,6 +127,7 @@ app.get('/api/config', withBusiness, (req, res) => {
   res.json({
     id: b.id, slug: b.slug, business: b.name,
     primary_color: b.primary_color, logo_url: b.logo_url,
+    card_bg: b.card_bg, card_bg_image: b.card_bg_image, card_text_color: b.card_text_color, tagline: b.tagline,
     cycle_days: b.cycle_days,
     reward_tiers: getRewardTiers(db, b.id),
   });
@@ -137,17 +140,19 @@ app.post('/api/join', (req, res) => {
   if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
   try {
     const token = join(db, biz.id, req.body.phone, req.body.name);
-    res.json({ token, business: { id: biz.id, slug: biz.slug, name: biz.name, primary_color: biz.primary_color, logo_url: biz.logo_url } });
+    res.json({ token, business: { id: biz.id, slug: biz.slug, name: biz.name, primary_color: biz.primary_color, logo_url: biz.logo_url,
+      card_bg: biz.card_bg, card_bg_image: biz.card_bg_image, card_text_color: biz.card_text_color, tagline: biz.tagline } });
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 app.get('/api/card', (req, res) => {
-  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.cycle_days, b.id AS business_id
+  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg, b.card_bg_image, b.card_text_color, b.tagline, b.cycle_days, b.id AS business_id
     FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   res.json({
     name: c.name, stamps: c.stamps, total_rewards: c.total_rewards, cycle_start: c.cycle_start,
-    business: c.business_name, slug: c.slug, primary_color: c.primary_color,
+    business: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url,
+    card_bg: c.card_bg, card_bg_image: c.card_bg_image, card_text_color: c.card_text_color, tagline: c.tagline,
     cycle_days: c.cycle_days,
     reward_tiers: getRewardTiers(db, c.business_id),
   });
@@ -191,13 +196,19 @@ app.delete('/api/:slug/reward-tiers/:id', withBusiness, staff, (req, res) =>
   res.json(deleteRewardTier(db, req.biz.id, req.params.id)));
 
 app.put('/api/:slug/settings', withBusiness, staff, (req, res) => {
-  const biz = updateBusiness(db, req.biz.slug, {
-    name:          req.body.name,
-    primary_color: req.body.primary_color,
-    logo_url:      req.body.logo_url,
-    cycle_days:    req.body.cycle_days !== undefined ? Number(req.body.cycle_days) : undefined,
-  });
-  res.json(biz);
+  try {
+    const biz = updateBusiness(db, req.biz.slug, {
+      name:          req.body.name,
+      primary_color: req.body.primary_color,
+      logo_url:      req.body.logo_url,
+      card_bg:         req.body.card_bg,
+      card_bg_image:   req.body.card_bg_image,
+      card_text_color: req.body.card_text_color,
+      tagline:         req.body.tagline,
+      cycle_days:    req.body.cycle_days !== undefined ? Number(req.body.cycle_days) : undefined,
+    });
+    res.json(biz);
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // ── Wallet ─────────────────────────────────────────────────────────────────────

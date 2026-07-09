@@ -230,13 +230,15 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final biz = widget.lcard.business;
     final d = _data;
+    // El endpoint /api/card trae el branding fresco; ahí 'name' es el cliente
+    // y 'business' es el nombre del negocio — corregimos la clave antes de parsear.
+    final biz = d != null
+        ? Business.fromJson({...d, 'name': d['business']})
+        : widget.lcard.business;
     final stamps = d?['stamps'] as int? ?? 0;
-    final tiers = d != null
-        ? (d['reward_tiers'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList()
-        : biz.rewardTiers;
-    final cycleDays = d?['cycle_days'] as int? ?? biz.cycleDays;
+    final tiers = biz.rewardTiers;
+    final cycleDays = biz.cycleDays;
     final cycleStart = DateTime.tryParse(d?['cycle_start'] ?? '') ?? DateTime.now();
     final cycleEnd = cycleStart.add(Duration(days: cycleDays));
     final maxStamps = tiers.isEmpty ? 0 : tiers.map((t) => t.stampsRequired).reduce((a, b) => a > b ? a : b);
@@ -247,13 +249,11 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
         padding: const EdgeInsets.all(20),
         children: [
           _VisualCard(
-            businessName: biz.name,
+            biz: biz,
             name: d?['name'] ?? '',
             token: widget.lcard.token,
             stamps: stamps,
             maxStamps: maxStamps,
-            color: biz.primaryColor,
-            logoUrl: biz.logoUrl,
           ),
           const SizedBox(height: 16),
           _CycleInfo(cycleEnd: cycleEnd),
@@ -815,31 +815,48 @@ class _SettingsFormState extends State<_SettingsForm> {
   late final TextEditingController _name;
   late final TextEditingController _color;
   late final TextEditingController _logo;
+  late final TextEditingController _cardBg;
+  late final TextEditingController _cardBgImg;
+  late final TextEditingController _cardText;
+  late final TextEditingController _tagline;
   late final TextEditingController _cycle;
   bool _saving = false;
   String? _msg;
 
+  static String _hexOf(Color? c) => c == null ? '' : Business.hex(c);
+
   @override
   void initState() {
     super.initState();
-    _name  = TextEditingController(text: widget.biz.name);
-    _color = TextEditingController(
-        text: '#${widget.biz.primaryColor.toARGB32().toRadixString(16).substring(2).toUpperCase()}');
-    _logo  = TextEditingController(text: widget.biz.logoUrl);
-    _cycle = TextEditingController(text: '${widget.biz.cycleDays}');
+    _name     = TextEditingController(text: widget.biz.name);
+    _color    = TextEditingController(text: _hexOf(widget.biz.primaryColor));
+    _logo     = TextEditingController(text: widget.biz.logoUrl);
+    _cardBg    = TextEditingController(text: _hexOf(widget.biz.cardBg));
+    _cardBgImg = TextEditingController(text: widget.biz.cardBgImage);
+    _cardText = TextEditingController(text: _hexOf(widget.biz.cardTextColor));
+    _tagline  = TextEditingController(text: widget.biz.tagline);
+    _cycle    = TextEditingController(text: '${widget.biz.cycleDays}');
   }
 
   @override
-  void dispose() { _name.dispose(); _color.dispose(); _logo.dispose(); _cycle.dispose(); super.dispose(); }
+  void dispose() {
+    _name.dispose(); _color.dispose(); _logo.dispose();
+    _cardBg.dispose(); _cardBgImg.dispose(); _cardText.dispose(); _tagline.dispose(); _cycle.dispose();
+    super.dispose();
+  }
 
   Future<void> _save() async {
     setState(() { _saving = true; _msg = null; });
     try {
       final raw = await Api.updateSettings(widget.slug, widget.pass, {
-        'name':          _name.text.trim(),
-        'primary_color': _color.text.trim(),
-        'logo_url':      _logo.text.trim(),
-        'cycle_days':    int.tryParse(_cycle.text) ?? 30,
+        'name':            _name.text.trim(),
+        'primary_color':   _color.text.trim(),
+        'logo_url':        _logo.text.trim(),
+        'card_bg':         _cardBg.text.trim(),
+        'card_bg_image':   _cardBgImg.text.trim(),
+        'card_text_color': _cardText.text.trim(),
+        'tagline':         _tagline.text.trim(),
+        'cycle_days':      int.tryParse(_cycle.text) ?? 30,
       });
       final updated = Business.fromJson(raw);
       widget.onSaved(updated);
@@ -864,6 +881,14 @@ class _SettingsFormState extends State<_SettingsForm> {
         _Field(ctrl: _color, label: 'Color principal (hex)',     icon: Icons.palette_outlined),
         const SizedBox(height: 10),
         _Field(ctrl: _logo,  label: 'URL del logo (opcional)',   icon: Icons.image_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _cardBg,   label: 'Fondo de la tarjeta (hex, vacío = default)', icon: Icons.format_paint_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _cardBgImg, label: 'URL de foto de fondo (opcional)',           icon: Icons.wallpaper_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _cardText, label: 'Color del texto (hex, vacío = blanco)',      icon: Icons.text_fields_outlined),
+        const SizedBox(height: 10),
+        _Field(ctrl: _tagline,  label: 'Frase de la tarjeta (opcional)',             icon: Icons.short_text),
         const SizedBox(height: 10),
         _Field(ctrl: _cycle, label: 'Duración del ciclo (días)', icon: Icons.timer_outlined, keyboardType: TextInputType.number),
         if (_msg != null) ...[
@@ -922,30 +947,51 @@ class _WhiteCard extends StatelessWidget {
 }
 
 class _VisualCard extends StatelessWidget {
-  final String businessName, name, token, logoUrl;
+  final Business biz;
+  final String name, token;
   final int stamps, maxStamps;
-  final Color color;
-  const _VisualCard({required this.businessName, required this.name, required this.token,
-      required this.stamps, required this.maxStamps, required this.color, required this.logoUrl});
+  const _VisualCard({required this.biz, required this.name, required this.token,
+      required this.stamps, required this.maxStamps});
 
   @override
   Widget build(BuildContext context) {
+    final txt = biz.cardTextColor ?? Colors.white;
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: cardGradient,
+        color: biz.cardBg,
+        gradient: biz.cardBg == null ? cardGradient : null,
+        // Foto de fondo con velo oscuro para que el texto siga siendo legible
+        image: biz.cardBgImage.isNotEmpty
+            ? DecorationImage(
+                image: NetworkImage(biz.cardBgImage),
+                fit: BoxFit.cover,
+                colorFilter: ColorFilter.mode(Colors.black.withValues(alpha: 0.45), BlendMode.darken),
+                onError: (_, __) {}, // foto caída → queda el color/gradiente de fondo
+              )
+            : null,
         borderRadius: BorderRadius.circular(24),
         boxShadow: [BoxShadow(color: const Color(0xFF111528).withValues(alpha: 0.4), blurRadius: 24, offset: const Offset(0, 12))],
       ),
       child: Column(children: [
         Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
           Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(businessName, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700)),
+            Text(biz.name, maxLines: 1, overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: txt, fontSize: 18, fontWeight: FontWeight.w700)),
+            if (biz.tagline.isNotEmpty)
+              Text(biz.tagline, maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: txt.withValues(alpha: 0.7), fontSize: 12)),
             if (name.isNotEmpty)
-              Text('Hola, $name', style: const TextStyle(color: Colors.white60, fontSize: 13)),
+              Text('Hola, $name', style: TextStyle(color: txt.withValues(alpha: 0.6), fontSize: 13)),
           ])),
-          Icon(Icons.loyalty, color: color, size: 26),
+          if (biz.logoUrl.isNotEmpty)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.network(biz.logoUrl, width: 42, height: 42, fit: BoxFit.cover,
+                  errorBuilder: (_, __, ___) => Icon(Icons.loyalty, color: biz.primaryColor, size: 26)),
+            )
+          else
+            Icon(Icons.loyalty, color: biz.primaryColor, size: 26),
         ]),
         const SizedBox(height: 20),
         Container(
@@ -954,8 +1000,8 @@ class _VisualCard extends StatelessWidget {
           child: QrImageView(data: token, size: 180),
         ),
         const SizedBox(height: 14),
-        const Text('Muestra este código en el local para sellar',
-            textAlign: TextAlign.center, style: TextStyle(color: Colors.white70, fontSize: 12)),
+        Text('Muestra este código en el local para sellar',
+            textAlign: TextAlign.center, style: TextStyle(color: txt.withValues(alpha: 0.7), fontSize: 12)),
       ]),
     );
   }

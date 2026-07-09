@@ -162,6 +162,10 @@
       <div class="field"><label>Nombre del negocio</label><input id="s-business" type="text" placeholder="Mi Negocio"></div>
       <div class="field"><label>Color principal (hex)</label><input id="s-color" type="text" placeholder="#E23B3B" maxlength="7"></div>
       <div class="field"><label>URL del logo (opcional)</label><input id="s-logo" type="url" placeholder="https://..."></div>
+      <div class="field"><label>Fondo de la tarjeta (hex, vacío = default)</label><input id="s-cardbg" type="text" placeholder="#1A1A2E" maxlength="7"></div>
+      <div class="field"><label>URL de foto de fondo (opcional)</label><input id="s-cardbgimg" type="url" placeholder="https://..."></div>
+      <div class="field"><label>Color del texto de la tarjeta (hex, vacío = blanco)</label><input id="s-cardtext" type="text" placeholder="#FFFFFF" maxlength="7"></div>
+      <div class="field"><label>Frase de la tarjeta (opcional)</label><input id="s-tagline" type="text" placeholder="Ej. Tu café de siempre te premia"></div>
       <div class="field"><label>Duración del ciclo (días)</label><input id="s-cycle" type="number" min="1" placeholder="30"></div>
       <div style="display:flex;align-items:center">
         <button class="btn-save" id="s-save">Guardar cambios</button>
@@ -288,6 +292,10 @@
     document.getElementById('s-business').value = s.business || s.name || '';
     document.getElementById('s-color').value    = s.primary_color || '';
     document.getElementById('s-logo').value     = s.logo_url || '';
+    document.getElementById('s-cardbg').value    = s.card_bg || '';
+    document.getElementById('s-cardbgimg').value = s.card_bg_image || '';
+    document.getElementById('s-cardtext').value = s.card_text_color || '';
+    document.getElementById('s-tagline').value  = s.tagline || '';
     document.getElementById('s-cycle').value    = s.cycle_days || 30;
   }
 
@@ -303,6 +311,10 @@
           name:          document.getElementById('s-business').value.trim(),
           primary_color: document.getElementById('s-color').value.trim(),
           logo_url:      document.getElementById('s-logo').value.trim(),
+          card_bg:         document.getElementById('s-cardbg').value.trim(),
+          card_bg_image:   document.getElementById('s-cardbgimg').value.trim(),
+          card_text_color: document.getElementById('s-cardtext').value.trim(),
+          tagline:         document.getElementById('s-tagline').value.trim(),
           cycle_days:    Number(document.getElementById('s-cycle').value),
         }),
       });

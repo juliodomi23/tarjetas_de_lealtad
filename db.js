@@ -35,6 +35,10 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
     name          TEXT NOT NULL,
     primary_color TEXT NOT NULL DEFAULT '#E23B3B',
     logo_url      TEXT NOT NULL DEFAULT '',
+    card_bg       TEXT NOT NULL DEFAULT '',
+    card_bg_image TEXT NOT NULL DEFAULT '',
+    card_text_color TEXT NOT NULL DEFAULT '',
+    tagline       TEXT NOT NULL DEFAULT '',
     cycle_days    INTEGER NOT NULL DEFAULT 30,
     admin_pass    TEXT NOT NULL,
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
@@ -72,6 +76,10 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
   try { db.exec(`ALTER TABLE reward_tiers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE stamps_log ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
+  try { db.exec(`ALTER TABLE businesses ADD COLUMN card_bg TEXT NOT NULL DEFAULT ''`); } catch {}
+  try { db.exec(`ALTER TABLE businesses ADD COLUMN card_bg_image TEXT NOT NULL DEFAULT ''`); } catch {}
+  try { db.exec(`ALTER TABLE businesses ADD COLUMN card_text_color TEXT NOT NULL DEFAULT ''`); } catch {}
+  try { db.exec(`ALTER TABLE businesses ADD COLUMN tagline TEXT NOT NULL DEFAULT ''`); } catch {}
 
   // Migrar claves en texto plano a scrypt (despliegues anteriores)
   db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
@@ -91,14 +99,25 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
 // ── Negocios ─────────────────────────────────────────────────────────────────
 
 function listBusinesses(db) {
-  return db.prepare('SELECT id,slug,name,primary_color,logo_url,cycle_days FROM businesses ORDER BY id').all();
+  return db.prepare('SELECT id,slug,name,primary_color,logo_url,card_bg,card_bg_image,card_text_color,tagline,cycle_days FROM businesses ORDER BY id').all();
 }
 
 function getBusinessBySlug(db, slug) {
   return db.prepare('SELECT * FROM businesses WHERE slug=?').get(slug);
 }
 
+// Colores hex inválidos guardados aquí crashean el parseo en la app Flutter — validar en la fuente.
+const COLOR_FIELDS = ['primary_color', 'card_bg', 'card_text_color'];
+function checkColors(fields) {
+  for (const k of COLOR_FIELDS) {
+    const v = fields[k];
+    if (v !== undefined && v !== '' && !/^#[0-9a-fA-F]{6}$/.test(v))
+      throw new Error(`Color inválido en ${k} — usa formato #RRGGBB`);
+  }
+}
+
 function createBusiness(db, { slug, name, primary_color = '#E23B3B', logo_url = '', cycle_days = 30, admin_pass }) {
+  checkColors({ primary_color });
   db.prepare(`INSERT INTO businesses (slug,name,primary_color,logo_url,cycle_days,admin_pass)
     VALUES (?,?,?,?,?,?)`)
     .run(slug, name, primary_color, logo_url, cycle_days, hashPass(admin_pass));
@@ -106,7 +125,8 @@ function createBusiness(db, { slug, name, primary_color = '#E23B3B', logo_url = 
 }
 
 function updateBusiness(db, slug, fields) {
-  const allowed = ['name', 'primary_color', 'logo_url', 'cycle_days', 'admin_pass'];
+  checkColors(fields);
+  const allowed = ['name', 'primary_color', 'logo_url', 'card_bg', 'card_bg_image', 'card_text_color', 'tagline', 'cycle_days', 'admin_pass'];
   const sets = allowed.filter(k => fields[k] !== undefined).map(k => `${k}=?`).join(',');
   const vals = allowed.filter(k => fields[k] !== undefined)
     .map(k => k === 'admin_pass' ? hashPass(fields[k]) : fields[k]);

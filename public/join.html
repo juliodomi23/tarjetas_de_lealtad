@@ -139,9 +139,10 @@
 <body>
 <div class="wrap">
   <div class="logo-area">
-    <img class="logo-star" src="/Logo.jpg" alt="Aurum" onerror="this.style.display='none'" />
+    <img class="logo-star" id="logo-img" src="/Logo.jpg" alt="Aurum" onerror="this.style.display='none'" />
     <p class="logo-name">AURUM</p>
     <p class="biz-name" id="biz-label">Tarjetas de Lealtad</p>
+    <p class="biz-name" id="biz-tagline" style="display:none"></p>
   </div>
 
   <div id="loading"><div class="spinner"></div><p>Cargando...</p></div>
@@ -220,6 +221,19 @@
       wallets = w;
       el('biz-label').textContent = cfg.business;
       document.title = `Aurum — ${cfg.business}`;
+      // Branding por negocio
+      if (cfg.tagline) { el('biz-tagline').textContent = cfg.tagline; show('biz-tagline'); }
+      if (cfg.logo_url) { const img = el('logo-img'); img.src = cfg.logo_url; img.style.display = ''; }
+      if (cfg.card_bg) document.querySelectorAll('.card').forEach(c => c.style.background = cfg.card_bg);
+      if (cfg.card_bg_image) {
+        // encodeURI no escapa comillas — las escapamos para no romper el url() del CSS
+        const safeUrl = encodeURI(cfg.card_bg_image).replace(/'/g, '%27').replace(/"/g, '%22');
+        document.querySelectorAll('.card').forEach(c => {
+          // Velo oscuro encima de la foto para que el texto se lea
+          c.style.background = `linear-gradient(rgba(0,0,0,.55), rgba(0,0,0,.55)), url('${safeUrl}') center/cover`;
+        });
+      }
+      if (cfg.card_text_color) document.documentElement.style.setProperty('--text', cfg.card_text_color);
     } catch { hide('loading'); return; }
 
     hide('loading');
