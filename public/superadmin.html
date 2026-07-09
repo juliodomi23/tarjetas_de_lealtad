@@ -89,6 +89,35 @@
     border-radius:50%; display:inline-block; animation:spin .8s linear infinite; vertical-align:middle; }
   @keyframes spin { to { transform:rotate(360deg); } }
 
+  /* ── Login ── */
+  .login-overlay { position:fixed; inset:0; background:#111528; z-index:200;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  .login-card { background:#1a1f35; border:1px solid #232a47; border-radius:20px;
+    padding:36px 30px; width:100%; max-width:380px; text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .login-card .logo { margin:0 auto 16px; width:56px; height:56px; border-radius:16px; }
+  .login-card h2 { margin:0 0 4px; font-size:1.2rem; }
+  .login-card .sub { color:#8b90a8; font-size:.85rem; margin-bottom:24px; }
+  .login-card input { width:100%; box-sizing:border-box; background:#111528; border:1px solid #2c3354;
+    border-radius:12px; padding:13px 15px; color:#f2f3f7; font-size:1rem; font-family:inherit;
+    text-align:center; letter-spacing:.1em; transition:border-color .2s; }
+  .login-card input:focus { outline:none; border-color:#e23b3b; }
+  .login-card button { width:100%; margin-top:14px; padding:13px; border:none; border-radius:12px;
+    background:#e23b3b; color:#fff; font-size:.95rem; font-weight:600; font-family:inherit; cursor:pointer;
+    transition:filter .2s; }
+  .login-card button:hover { filter:brightness(1.1); }
+  .login-card button:disabled { opacity:.5; cursor:not-allowed; }
+  .login-err { color:#f87171; font-size:.83rem; margin:10px 0 0; min-height:1.2em; }
+  .login-card.shake { animation:shake .4s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+
+  /* ── Toast ── */
+  .toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(80px);
+    background:#1f4a32; color:#37d67a; border:1px solid #2b6a47; border-radius:12px;
+    padding:12px 20px; font-size:.88rem; font-weight:500; z-index:300;
+    transition:transform .3s ease; pointer-events:none; }
+  .toast.show { transform:translateX(-50%) translateY(0); }
+
   :focus-visible { outline:2px solid #e23b3b; outline-offset:2px; border-radius:6px; }
   @media (max-width:640px) { body { padding:14px; } .biz-grid { grid-template-columns:1fr; } }
 </style>
@@ -171,18 +200,96 @@
   </div>
 </div>
 
+<!-- Login -->
+<div class="login-overlay" id="login" style="display:none">
+  <div class="login-card" id="login-card">
+    <div class="logo">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"
+        stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+      </svg>
+    </div>
+    <h2>Ámbar Rojo Studios</h2>
+    <p class="sub">Panel de gestión · Acceso restringido</p>
+    <form id="login-form">
+      <input type="password" id="login-pass" placeholder="Clave super-admin" autocomplete="current-password" autofocus>
+      <p class="login-err" id="login-err"></p>
+      <button type="submit" id="login-btn">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- Modal: cambiar clave del personal -->
+<div class="modal-bg" id="pass-modal">
+  <div class="modal">
+    <h2>Cambiar clave del personal</h2>
+    <input type="hidden" id="p-slug">
+    <div class="field"><label>Nueva clave para <span id="p-slug-label" style="font-family:monospace;color:#f2f3f7"></span></label>
+      <input id="p-pass" type="text" placeholder="Clave nueva" autocomplete="off"></div>
+    <div class="err-msg" id="p-err"></div>
+    <div class="modal-actions">
+      <button class="cancel" id="p-cancel">Cancelar</button>
+      <button class="confirm" id="p-confirm">Cambiar clave</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
 <script>
   // ── Auth ──────────────────────────────────────────────────────────────────────
-  let superPass = sessionStorage.getItem('superPass');
-  if (!superPass) {
-    superPass = prompt('Clave de Ámbar Rojo (super-admin):') || '';
-    sessionStorage.setItem('superPass', superPass);
+  let superPass = sessionStorage.getItem('superPass') || '';
+
+  function showLogin(msg = '') {
+    document.getElementById('login').style.display = '';
+    document.getElementById('login-err').textContent = msg;
+    document.getElementById('login-pass').focus();
+    if (msg) {
+      const card = document.getElementById('login-card');
+      card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+    }
   }
-  const auth = { 'Authorization': 'Bearer ' + superPass };
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const candidate = document.getElementById('login-pass').value;
+    if (!candidate) return;
+    btn.disabled = true; btn.textContent = 'Verificando...';
+    try {
+      const r = await fetch('/api/admin/businesses', { headers: { 'Authorization': 'Bearer ' + candidate } });
+      if (r.ok) {
+        superPass = candidate;
+        sessionStorage.setItem('superPass', superPass);
+        document.getElementById('login').style.display = 'none';
+        load();
+      } else if (r.status === 429) {
+        showLogin('Demasiados intentos. Espera 15 minutos.');
+      } else {
+        showLogin('Clave incorrecta.');
+      }
+    } catch {
+      showLogin('Sin conexión. Intenta de nuevo.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Entrar';
+    }
+  });
+
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 3000);
+  }
 
   async function api(path, opts = {}) {
-    const r = await fetch(path, { ...opts, headers: { ...auth, ...(opts.headers||{}) } });
-    if (r.status === 401) { sessionStorage.removeItem('superPass'); location.reload(); }
+    const r = await fetch(path, { ...opts, headers: { 'Authorization': 'Bearer ' + superPass, ...(opts.headers||{}) } });
+    if (r.status === 401) {
+      sessionStorage.removeItem('superPass');
+      superPass = '';
+      showLogin('Tu sesión expiró. Vuelve a entrar.');
+      throw new Error('Sesión expirada');
+    }
     const data = await r.json();
     if (!r.ok) throw new Error(data.error || 'Error');
     return data;
@@ -307,18 +414,44 @@
   };
 
   // ── Cambiar clave del personal ────────────────────────────────────────────────
-  async function changePass(slug) {
-    const nueva = prompt(`Nueva clave del personal (${slug}):`);
-    if (!nueva) return;
+  function changePass(slug) {
+    document.getElementById('p-slug').value = slug;
+    document.getElementById('p-slug-label').textContent = slug;
+    document.getElementById('p-pass').value = '';
+    document.getElementById('p-err').textContent = '';
+    document.getElementById('pass-modal').classList.add('open');
+    document.getElementById('p-pass').focus();
+  }
+
+  document.getElementById('p-cancel').onclick = () =>
+    document.getElementById('pass-modal').classList.remove('open');
+
+  document.getElementById('pass-modal').onclick = e => {
+    if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+  };
+
+  document.getElementById('p-confirm').onclick = async () => {
+    const btn   = document.getElementById('p-confirm');
+    const err   = document.getElementById('p-err');
+    const slug  = document.getElementById('p-slug').value;
+    const nueva = document.getElementById('p-pass').value.trim();
+    if (!nueva) { err.textContent = 'Escribe la clave nueva.'; return; }
+    err.textContent = '';
+    btn.disabled = true; btn.textContent = 'Cambiando…';
     try {
       await api(`/api/admin/businesses/${slug}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ admin_pass: nueva }),
       });
-      alert('Clave actualizada. Compártela con el staff del negocio.');
-    } catch (e) { alert('Error: ' + e.message); }
-  }
+      document.getElementById('pass-modal').classList.remove('open');
+      toast('Clave actualizada. Compártela con el staff del negocio.');
+    } catch (e) {
+      err.textContent = e.message;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Cambiar clave';
+    }
+  };
 
   // ── Editar negocio ────────────────────────────────────────────────────────────
   function openEdit(b) {
@@ -365,7 +498,7 @@
   };
 
   // ── Init ──────────────────────────────────────────────────────────────────────
-  load();
+  superPass ? load() : showLogin();
 </script>
 </body>
 </html>

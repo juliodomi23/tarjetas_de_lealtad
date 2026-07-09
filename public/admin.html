@@ -79,6 +79,28 @@
     transition:border-color .2s; }
   .field input:focus { outline:none; border-color:#e23b3b; }
 
+  /* ── Login ── */
+  .login-overlay { position:fixed; inset:0; background:#111528; z-index:100;
+    display:flex; align-items:center; justify-content:center; padding:20px; }
+  .login-card { background:#1a1f35; border:1px solid #232a47; border-radius:20px;
+    padding:36px 30px; width:100%; max-width:380px; text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,.4); }
+  .login-card .badge { margin:0 auto 16px; width:56px; height:56px; border-radius:16px; }
+  .login-card h2 { margin:0 0 4px; font-size:1.2rem; }
+  .login-card .sub { color:#8b90a8; font-size:.85rem; margin-bottom:24px; }
+  .login-card input { width:100%; box-sizing:border-box; background:#111528; border:1px solid #2c3354;
+    border-radius:12px; padding:13px 15px; color:#f2f3f7; font-size:1rem; font-family:inherit;
+    text-align:center; letter-spacing:.1em; transition:border-color .2s; }
+  .login-card input:focus { outline:none; border-color:#e23b3b; }
+  .login-card button { width:100%; margin-top:14px; padding:13px; border:none; border-radius:12px;
+    background:#e23b3b; color:#fff; font-size:.95rem; font-weight:600; font-family:inherit; cursor:pointer;
+    transition:filter .2s; }
+  .login-card button:hover { filter:brightness(1.1); }
+  .login-card button:disabled { opacity:.5; cursor:not-allowed; }
+  .login-err { color:#f87171; font-size:.83rem; margin:10px 0 0; min-height:1.2em; }
+  .login-card.shake { animation:shake .4s; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-8px)} 75%{transform:translateX(8px)} }
+
   .btn-save { background:#e23b3b; color:#fff; border:none; border-radius:10px;
     padding:10px 20px; font-size:.9rem; font-weight:600; cursor:pointer;
     font-family:inherit; transition:opacity .2s; }
@@ -211,22 +233,71 @@
   </div>
 </div>
 
+<div class="login-overlay" id="login" style="display:none">
+  <div class="login-card" id="login-card">
+    <div class="badge"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+    <h2>Panel del negocio</h2>
+    <p class="sub" id="login-slug"></p>
+    <form id="login-form">
+      <input type="password" id="login-pass" placeholder="Clave de acceso" autocomplete="current-password" autofocus>
+      <p class="login-err" id="login-err"></p>
+      <button type="submit" id="login-btn">Entrar</button>
+    </form>
+  </div>
+</div>
+
 <script>
   // Lee el slug desde ?b=slug en la URL
   const slug = new URLSearchParams(location.search).get('b') || 'negocio-1';
 
-  let pass = localStorage.getItem('staffPass_' + slug);
-  if (!pass) {
-    pass = prompt(`Clave del personal (${slug}):`) || '';
-    localStorage.setItem('staffPass_' + slug, pass);
+  let pass = localStorage.getItem('staffPass_' + slug) || '';
+
+  function showLogin(msg = '') {
+    document.getElementById('login').style.display = '';
+    document.getElementById('login-slug').textContent = slug;
+    document.getElementById('login-err').textContent = msg;
+    document.getElementById('login-pass').focus();
+    if (msg) {
+      const card = document.getElementById('login-card');
+      card.classList.remove('shake'); void card.offsetWidth; card.classList.add('shake');
+    }
   }
-  const auth = { 'Authorization': 'Bearer ' + pass };
+
+  document.getElementById('login-form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('login-btn');
+    const candidate = document.getElementById('login-pass').value;
+    if (!candidate) return;
+    btn.disabled = true; btn.textContent = 'Verificando...';
+    try {
+      const r = await fetch(`/api/${slug}/stats`, { headers: { 'Authorization': 'Bearer ' + candidate } });
+      if (r.ok) {
+        pass = candidate;
+        localStorage.setItem('staffPass_' + slug, pass);
+        document.getElementById('login').style.display = 'none';
+        load();
+      } else if (r.status === 429) {
+        showLogin('Demasiados intentos. Espera 15 minutos.');
+      } else {
+        showLogin('Clave incorrecta.');
+      }
+    } catch {
+      showLogin('Sin conexión. Intenta de nuevo.');
+    } finally {
+      btn.disabled = false; btn.textContent = 'Entrar';
+    }
+  });
 
   let customers = [], sort = { k: 'created_at', dir: -1 };
 
   async function api(path, opts = {}) {
-    const r = await fetch(path, { ...opts, headers: { ...auth, ...(opts.headers || {}) } });
-    if (r.status === 401) { localStorage.removeItem('staffPass_' + slug); location.reload(); }
+    const r = await fetch(path, { ...opts, headers: { 'Authorization': 'Bearer ' + pass, ...(opts.headers || {}) } });
+    if (r.status === 401) {
+      localStorage.removeItem('staffPass_' + slug);
+      pass = '';
+      showLogin('Tu sesión expiró. Vuelve a entrar.');
+      throw new Error('401');
+    }
     return r.json();
   }
 
@@ -398,7 +469,7 @@
   }
 
   document.getElementById('refresh').onclick = load;
-  load();
+  pass ? load() : showLogin();
 </script>
 </body>
 </html>
