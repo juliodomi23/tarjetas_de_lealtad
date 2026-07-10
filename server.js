@@ -23,7 +23,22 @@ const db = openDb(process.env.DB_FILE || 'loyalty.db', {
 const app = express();
 app.set('trust proxy', 1); // nginx delante: usar la IP real del cliente para el rate-limit
 app.use(express.json());
+
+// Headers de seguridad básicos (equivalente mínimo a helmet)
+app.use((_req, res, next) => {
+  res.set({
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Strict-Transport-Security': 'max-age=31536000',
+  });
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
+
+if (SUPER_PASS === 'super-cambiar')
+  console.warn('⚠️  SUPER_PASS sigue en el valor por defecto — cámbialo en ecosystem.config.js / entorno');
 
 // ── Middlewares ───────────────────────────────────────────────────────────────
 
@@ -135,7 +150,18 @@ app.get('/api/config', withBusiness, (req, res) => {
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
 
+// ponytail: rate-limit en memoria por IP; suficiente para un solo proceso
+const joinLog = new Map(); // ip -> [timestamps]
+const JOIN_MAX = 5, JOIN_WINDOW_MS = 10 * 60 * 1000;
+
 app.post('/api/join', (req, res) => {
+  const now = Date.now();
+  const hits = (joinLog.get(req.ip) || []).filter(t => now - t < JOIN_WINDOW_MS);
+  if (hits.length >= JOIN_MAX)
+    return res.status(429).json({ error: 'Demasiados registros, intenta más tarde' });
+  hits.push(now);
+  joinLog.set(req.ip, hits);
+
   const biz = getBusinessBySlug(db, req.body.business_slug);
   if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
   try {

@@ -16,13 +16,16 @@ assert.strictEqual(t.length, 16);
 assert.strictEqual(join(db, biz.id, '5512345678', 'Ana'), t, 'mismo phone => mismo token');
 assert.throws(() => join(db, biz.id, '123', 'corto'), /inválido/);
 
-// ciclo de sellos con meta 3: se reinicia y suma premio al completar
+// ciclo de sellos con meta 3: se reinicia y suma premio al completar (cooldown 0 para el test)
 let r;
-r = addStamp(db, t, biz); assert.deepStrictEqual([r.stamps, r.earned.length], [1, 0]);
-r = addStamp(db, t, biz); assert.deepStrictEqual([r.stamps, r.earned.length], [2, 0]);
-r = addStamp(db, t, biz); assert.deepStrictEqual([r.stamps, r.earned.length, r.total_rewards, r.reset], [0, 1, 1, true]);
-r = addStamp(db, t, biz); assert.strictEqual(r.stamps, 1, 'nuevo ciclo empieza en 1');
+r = addStamp(db, t, biz, 0); assert.deepStrictEqual([r.stamps, r.earned.length], [1, 0]);
+r = addStamp(db, t, biz, 0); assert.deepStrictEqual([r.stamps, r.earned.length], [2, 0]);
+r = addStamp(db, t, biz, 0); assert.deepStrictEqual([r.stamps, r.earned.length, r.total_rewards, r.reset], [0, 1, 1, true]);
+r = addStamp(db, t, biz, 0); assert.strictEqual(r.stamps, 1, 'nuevo ciclo empieza en 1');
 assert.throws(() => addStamp(db, 'token-falso', biz), /no encontrado/);
+
+// cooldown: dos sellos seguidos con cooldown activo => rechazado
+assert.throws(() => addStamp(db, t, biz), /ya fue sellada/, 'doble escaneo bloqueado');
 
 // stats: 1 cliente, 4 sellos en bitácora, 1 premio, 1 sello en curso
 const s = stats(db, biz.id);

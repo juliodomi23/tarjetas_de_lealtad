@@ -172,10 +172,17 @@ function deleteRewardTier(db, businessId, id) {
 
 // ── Sellos ────────────────────────────────────────────────────────────────────
 
-function addStamp(db, token, business) {
+function addStamp(db, token, business, cooldownSecs = 120) {
   const c = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
   if (!c) throw new Error('Cliente no encontrado');
   if (c.business_id !== business.id) throw new Error('Tarjeta no válida para este negocio');
+
+  // Evita doble escaneo accidental (o sellos regalados en ráfaga)
+  if (cooldownSecs > 0) {
+    const recent = db.prepare(`SELECT 1 FROM stamps_log WHERE token=? AND ts > datetime('now', ?) LIMIT 1`)
+      .get(token, `-${cooldownSecs} seconds`);
+    if (recent) throw new Error('Esta tarjeta ya fue sellada hace un momento');
+  }
 
   const tiers = getRewardTiers(db, business.id);
   const maxStamps = tiers.length > 0 ? Math.max(...tiers.map(t => t.stamps_required)) : 0;

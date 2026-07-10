@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'api.dart';
 import 'theme.dart';
@@ -127,10 +128,19 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Text('Mis tarjetas (${_localCards.length})', style: const TextStyle(fontSize: 16)),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.qr_code_scanner),
-            tooltip: 'Personal',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())),
+          // El acceso del personal va escondido en el menú para no confundir al cliente
+          PopupMenuButton<String>(
+            onSelected: (_) => Navigator.push(context, MaterialPageRoute(builder: (_) => const ScannerScreen())),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'staff',
+                child: Row(children: [
+                  Icon(Icons.qr_code_scanner, size: 20, color: muted),
+                  SizedBox(width: 10),
+                  Text('Soy del personal'),
+                ]),
+              ),
+            ],
           ),
         ],
       ),
@@ -202,6 +212,7 @@ class _CardPage extends StatefulWidget {
 
 class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
   Map<String, dynamic>? _data;
+  bool _offline = false;
 
   @override
   void initState() {
@@ -224,8 +235,10 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
   Future<void> _load() async {
     try {
       final d = await Api.card(widget.lcard.token);
-      if (mounted) setState(() => _data = d);
-    } catch (_) {}
+      if (mounted) setState(() { _data = d; _offline = false; });
+    } catch (_) {
+      if (mounted) setState(() => _offline = true);
+    }
   }
 
   @override
@@ -246,7 +259,8 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        // Padding inferior extra para que el FAB no tape la última recompensa
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 96),
         children: [
           _VisualCard(
             biz: biz,
@@ -255,6 +269,19 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
             stamps: stamps,
             maxStamps: maxStamps,
           ),
+          if (_offline) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(color: const Color(0xFFFFF7E6), borderRadius: BorderRadius.circular(12)),
+              child: const Row(children: [
+                Icon(Icons.wifi_off_rounded, size: 18, color: Color(0xFFB45309)),
+                SizedBox(width: 8),
+                Expanded(child: Text('Sin conexión — tu QR sigue funcionando, pero los sellos pueden no estar al día.',
+                    style: TextStyle(fontSize: 12, color: Color(0xFFB45309)))),
+              ]),
+            ),
+          ],
           const SizedBox(height: 16),
           _CycleInfo(cycleEnd: cycleEnd),
           const SizedBox(height: 16),
@@ -266,7 +293,7 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     const Text('Tus sellos', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-                    Text('$stamps${maxStamps > 0 ? ' / $maxStamps' : ''}',
+                    Text('${d == null ? '—' : stamps}${maxStamps > 0 ? ' / $maxStamps' : ''}',
                         style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: biz.primaryColor)),
                   ],
                 ),
@@ -473,6 +500,8 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
+  static const _vault = FlutterSecureStorage();
+  final _camera = MobileScannerController();
   String? _pass;
   String? _staffSlug;
   List<RewardTier> _earned = [];
@@ -487,10 +516,39 @@ class _ScannerScreenState extends State<ScannerScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) => _ensureLogin());
   }
 
+  @override
+  void dispose() {
+    _camera.dispose();
+    super.dispose();
+  }
+
+  Future<void> _saveStaff(String slug, String pass) async {
+    await _vault.write(key: 'staffSlug', value: slug);
+    await _vault.write(key: 'staffPass', value: pass);
+    _staffSlug = slug;
+    _pass = pass;
+  }
+
+  Future<void> _clearStaff() async {
+    await _vault.delete(key: 'staffPass');
+    await _vault.delete(key: 'staffSlug');
+    _pass = null;
+    _staffSlug = null;
+  }
+
   Future<void> _ensureLogin() async {
-    final p = await SharedPreferences.getInstance();
-    _pass = p.getString('staffPass');
-    _staffSlug = p.getString('staffSlug');
+    _pass = await _vault.read(key: 'staffPass');
+    _staffSlug = await _vault.read(key: 'staffSlug');
+    // Migración: sesiones guardadas antes en SharedPreferences (texto plano)
+    if (_pass == null || _staffSlug == null) {
+      final p = await SharedPreferences.getInstance();
+      final oldPass = p.getString('staffPass'), oldSlug = p.getString('staffSlug');
+      if (oldPass != null && oldSlug != null) {
+        await _saveStaff(oldSlug, oldPass);
+        await p.remove('staffPass');
+        await p.remove('staffSlug');
+      }
+    }
     if (_pass == null || _staffSlug == null) {
       await _askLogin();
     } else {
@@ -533,11 +591,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             FilledButton(
               onPressed: () async {
                 if (selectedSlug == null || passCtrl.text.isEmpty) return;
-                final p = await SharedPreferences.getInstance();
-                await p.setString('staffSlug', selectedSlug!);
-                await p.setString('staffPass', passCtrl.text);
-                _staffSlug = selectedSlug;
-                _pass = passCtrl.text;
+                await _saveStaff(selectedSlug!, passCtrl.text);
                 Navigator.pop(ctx);
                 setState(() {});
               },
@@ -559,11 +613,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       final earnedList = (d['earned'] as List? ?? []).map((t) => RewardTier.fromJson(t)).toList();
       setState(() { _earned = earnedList; _reset = d['reset'] == true; _error = ''; _showResult = true; });
     } catch (e) {
-      if (e.toString() == 'Clave incorrecta') {
-        final p = await SharedPreferences.getInstance();
-        await p.remove('staffPass'); await p.remove('staffSlug');
-        _pass = null; _staffSlug = null;
-      }
+      if (e.toString() == 'Clave incorrecta') await _clearStaff();
       setState(() { _error = e.toString(); _showResult = true; });
     } finally {
       if (mounted) setState(() => _scanning = false);
@@ -581,6 +631,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
         title: const Text('Sellar tarjeta', style: TextStyle(color: Colors.white)),
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.flashlight_on_outlined),
+            tooltip: 'Linterna',
+            onPressed: () => _camera.toggleTorch(),
+          ),
           if (_pass != null && _staffSlug != null)
             IconButton(
               icon: const Icon(Icons.bar_chart_rounded),
@@ -592,9 +647,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
             icon: const Icon(Icons.logout, size: 20),
             tooltip: 'Cambiar negocio',
             onPressed: () async {
-              final p = await SharedPreferences.getInstance();
-              await p.remove('staffPass'); await p.remove('staffSlug');
-              _pass = null; _staffSlug = null;
+              await _clearStaff();
               setState(() {});
               _askLogin();
             },
@@ -604,7 +657,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
       body: Stack(
         alignment: Alignment.center,
         children: [
-          MobileScanner(onDetect: _onDetect),
+          MobileScanner(controller: _camera, onDetect: _onDetect),
           if (!_showResult) ...[
             Container(
               width: 240, height: 240,
@@ -782,10 +835,24 @@ class _AdminScreenState extends State<AdminScreen> {
                         tiers: _tiers,
                         onAdd: () => _showTierDialog(),
                         onEdit: (t) => _showTierDialog(tier: t),
-                        onDelete: (t) async {
-                          final tiers = await Api.deleteRewardTier(widget.slug, widget.pass, t.id);
-                          setState(() => _tiers = tiers);
-                        },
+                        onDelete: (t) => showDialog(
+                          context: context,
+                          builder: (_) => AlertDialog(
+                            title: const Text('Eliminar recompensa'),
+                            content: Text('¿Eliminar "${t.description}" (${t.stampsRequired} sellos)? Los clientes dejarán de verla.'),
+                            actions: [
+                              TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+                              FilledButton(
+                                onPressed: () async {
+                                  Navigator.pop(context);
+                                  final tiers = await Api.deleteRewardTier(widget.slug, widget.pass, t.id);
+                                  setState(() => _tiers = tiers);
+                                },
+                                child: const Text('Eliminar'),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: 20),
                       _CustomerList(
