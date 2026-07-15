@@ -20,7 +20,9 @@ en un solo deploy, cada uno con su slug, branding y recompensas.
 6. **Ámbar Rojo** administra los negocios desde `/superadmin.html`
    (`SUPER_PASS`): alta, edición y métricas de todos los tenants.
 
-El cliente nunca se autosella: sellar y canjear requieren la clave del negocio.
+El cliente nunca se autosella: sellar y canjear requieren clave. El dueño puede
+definir una **clave de personal** separada (en Configuración) que solo sirve
+para sellar/canjear, sin acceso al panel.
 
 ## Correr
 
@@ -38,6 +40,7 @@ Abre `http://localhost:3000`. Producción: PM2 + nginx + certbot (ver `DEPLOY.md
 | `SUPER_PASS`    | super-cambiar | Clave del superadmin (Ámbar Rojo) |
 | `PORT`          | 3000          | Puerto |
 | `DB_FILE`       | loyalty.db    | Archivo SQLite |
+| `WEBHOOK_URL`   | —             | URL de n8n para avisar cuando un cliente gana premio (opcional) |
 | `DEFAULT_SLUG`, `BUSINESS_NAME`, `ADMIN_PASS`, … | — | Semilla del primer negocio (solo primer arranque) |
 | `APPLE_*` / `GOOGLE_*` | — | Certs/keys de wallets (opcionales; sin ellas los botones se ocultan) |
 
@@ -55,8 +58,5 @@ recompensas) vive en la base de datos y se edita desde los paneles.
 
 ## Pendiente (cuando haga falta, no antes)
 
-- Aviso automático por WhatsApp al ganar premio (enganchar `earned` de
-  `/api/stamp` a n8n).
-- Clave separada dueño vs. personal (hoy comparten `admin_pass` por negocio).
 - Rate-limit en memoria → `express-rate-limit`/Redis si hay varios procesos.
-- Respaldo automatizado de la SQLite (hoy: cron manual en el VPS, ver `DEPLOY.md`).
+- Caché offline en `sw.js` (hoy solo habilita la instalación PWA).

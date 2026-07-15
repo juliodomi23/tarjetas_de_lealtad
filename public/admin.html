@@ -198,6 +198,16 @@
         <button class="btn-save" id="s-save">Guardar cambios</button>
         <span class="save-msg" id="s-msg"></span>
       </div>
+      <hr style="border:none;border-top:1px solid #2c3354;margin:18px 0">
+      <div class="field">
+        <label>Clave del personal (opcional — para sellar y canjear sin acceso al panel)</label>
+        <input id="s-staffpass" type="text" placeholder="Ej. tienda2024" autocomplete="off">
+      </div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <button class="btn-save" id="s-staff-save">Guardar clave</button>
+        <button class="btn-sm" id="s-staff-off">Desactivar</button>
+        <span class="save-msg" id="s-staff-msg"></span>
+      </div>
     </div>
 
     <div class="panel">
@@ -406,6 +416,32 @@
     document.getElementById('s-tagline').value  = s.tagline || '';
     document.getElementById('s-cycle').value    = s.cycle_days || 30;
   }
+
+  // Clave del personal: solo sella/canjea. Vacía = el personal usa la del dueño.
+  async function saveStaffPass(value) {
+    const msg = document.getElementById('s-staff-msg');
+    msg.textContent = '';
+    try {
+      const r = await api(`/api/${slug}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ staff_pass: value }),
+      });
+      if (r.error) throw new Error(r.error);
+      msg.textContent = value ? '✓ Clave guardada' : '✓ Desactivada';
+      msg.className = 'save-msg ok';
+      document.getElementById('s-staffpass').value = '';
+    } catch (e) {
+      msg.textContent = e.message; msg.className = 'save-msg err';
+    }
+  }
+  document.getElementById('s-staff-save').onclick = () => {
+    const v = document.getElementById('s-staffpass').value.trim();
+    if (v) saveStaffPass(v);
+  };
+  document.getElementById('s-staff-off').onclick = () => {
+    if (confirm('¿Desactivar la clave del personal? Volverán a usar la clave del dueño.')) saveStaffPass('');
+  };
 
   document.getElementById('s-save').onclick = async () => {
     const btn = document.getElementById('s-save');

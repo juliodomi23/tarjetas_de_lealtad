@@ -187,16 +187,41 @@ app.get('/api/card', (req, res) => {
 
 // ── Staff: sellar ─────────────────────────────────────────────────────────────
 
+// Sellar/canjear aceptan la clave del personal (si existe) o la del dueño.
+// El panel (stats, clientes, settings) sigue siendo solo del dueño.
+const stampPassOk = biz => pass =>
+  (biz.staff_pass && verifyPass(pass, biz.staff_pass)) || verifyPass(pass, biz.admin_pass);
+
+// Aviso a n8n cuando un cliente gana premio (fire-and-forget, opcional)
+const WEBHOOK_URL = process.env.WEBHOOK_URL || '';
+function notifyEarned(biz, customer, result) {
+  if (!WEBHOOK_URL || !result.earned.length) return;
+  fetch(WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      event: 'reward_earned',
+      business: biz.name, slug: biz.slug,
+      name: customer.name, phone: customer.phone,
+      earned: result.earned.map(t => t.description),
+      pending_rewards: result.total_rewards - (customer.redeemed_rewards || 0),
+    }),
+  }).catch(e => console.error('webhook n8n falló:', e.message));
+}
+
 // El token ya identifica al negocio; verificamos el pass contra ese negocio.
 app.post('/api/stamp', (req, res) => {
   const token = req.body.token;
   if (!token) return res.status(400).json({ error: 'Falta token' });
-  const customer = db.prepare('SELECT business_id FROM customers WHERE token=?').get(token);
+  const customer = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
   if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
-  if (!checkPass(req, res, pass => verifyPass(pass, biz.admin_pass))) return;
-  try { res.json(addStamp(db, token, biz)); }
-  catch (e) { res.status(400).json({ error: e.message }); }
+  if (!checkPass(req, res, stampPassOk(biz))) return;
+  try {
+    const result = addStamp(db, token, biz);
+    notifyEarned(biz, customer, result);
+    res.json(result);
+  } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
 // Canjear un premio pendiente (misma autenticación que sellar)
@@ -206,7 +231,7 @@ app.post('/api/redeem', (req, res) => {
   const customer = db.prepare('SELECT business_id FROM customers WHERE token=?').get(token);
   if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
-  if (!checkPass(req, res, pass => verifyPass(pass, biz.admin_pass))) return;
+  if (!checkPass(req, res, stampPassOk(biz))) return;
   try { res.json(redeemReward(db, token, biz)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -244,6 +269,7 @@ app.put('/api/:slug/settings', withBusiness, staff, (req, res) => {
       card_bg_image:   req.body.card_bg_image,
       card_text_color: req.body.card_text_color,
       tagline:         req.body.tagline,
+      staff_pass:      req.body.staff_pass,
       cycle_days:    req.body.cycle_days !== undefined ? Number(req.body.cycle_days) : undefined,
     });
     res.json(biz);

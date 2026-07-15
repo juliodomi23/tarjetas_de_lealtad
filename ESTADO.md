@@ -24,8 +24,15 @@ Documento de traspaso. Quien continúe: lee esto y el `README.md`.
   escáner nativo del personal, panel admin con canje de premios. `apiBase`
   configurable con `--dart-define=API_BASE=...`. `flutter analyze`: solo 3
   infos preexistentes.
-- **Tests**: `npm test` (`test.js`) — claves, join, ciclo de sellos, cooldown,
-  stats, aislamiento multi-tenant y canje. En verde.
+- **Clave dueño vs personal**: campo `staff_pass` opcional por negocio (se
+  define en Configuración del panel). Solo sirve para sellar/canjear; el panel
+  sigue pidiendo la clave del dueño.
+- **Webhook n8n**: con `WEBHOOK_URL` en el entorno, `/api/stamp` avisa (POST,
+  fire-and-forget) cuando un cliente gana premio. Payload en `DEPLOY.md`.
+- **Backup**: script versionado `backup.sh` + cron documentado en `DEPLOY.md`.
+- **Tests**: `npm test` corre `test.js` (unitario de db.js) y `test-http.js`
+  (integración HTTP contra el server real: auth, staff_pass, sellos, canje,
+  no-filtración de claves). En verde.
 - **Deploy**: PM2 + nginx + certbot en VPS (ver `DEPLOY.md`). Producción:
   `https://lealtad.ambarrojostudios.cloud`.
 
@@ -35,12 +42,10 @@ Documento de traspaso. Quien continúe: lee esto y el `README.md`.
 
 | # | Qué | Por qué | Esfuerzo |
 |---|-----|---------|----------|
-| 1 | **Aviso por WhatsApp al ganar premio** | `/api/stamp` ya devuelve `earned`; enganchar a un workflow n8n (stack de Ámbar Rojo). | Medio |
-| 2 | **Clave separada dueño vs personal** | Hoy comparten `admin_pass` por negocio. | Bajo |
-| 3 | **Respaldo automatizado de la SQLite** | Hoy es un cron manual en el VPS (`DEPLOY.md`); versionar el script y verificar que corra. | Bajo |
-| 4 | **Rate-limit persistente** | Hoy en memoria (`Map` por proceso); pasar a `express-rate-limit` si se escala a varios procesos. Marcado con `ponytail:` en `server.js`. | Bajo |
-| 5 | **Tests HTTP de `server.js`** | `test.js` solo cubre `db.js`. | Medio |
-| 6 | **Caché offline en `sw.js`** | El SW solo habilita la instalación PWA. Marcado con `ponytail:` en `sw.js`. | Bajo |
+| 1 | **Workflow n8n del aviso WhatsApp** | El server ya dispara el webhook (`WEBHOOK_URL`); falta crear el workflow en n8n que reciba y mande el mensaje. | Bajo |
+| 2 | **Configurar cron de backup en el VPS** | El script `backup.sh` ya está; falta agregar la línea al crontab (ver `DEPLOY.md`). | Bajo |
+| 3 | **Rate-limit persistente** | Hoy en memoria (`Map` por proceso); pasar a `express-rate-limit` si se escala a varios procesos. Marcado con `ponytail:` en `server.js`. | Bajo |
+| 4 | **Caché offline en `sw.js`** | El SW solo habilita la instalación PWA. Marcado con `ponytail:` en `sw.js`. | Bajo |
 
 ---
 

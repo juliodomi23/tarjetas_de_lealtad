@@ -7,6 +7,8 @@ module.exports = {
       DB_FILE: '/var/data/lealtad/loyalty.db',
       // Super-admin para crear nuevos negocios via POST /api/businesses
       SUPER_PASS: 'super-cambiar',
+      // URL de webhook n8n para avisar premios ganados (vacío = desactivado)
+      WEBHOOK_URL: '',
       // Slug del negocio por defecto que se siembra al iniciar
       DEFAULT_SLUG: 'negocio-1',
       // Config del negocio por defecto (solo aplica en el primer inicio)
