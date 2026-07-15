@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const {
   openDb, listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
-  join, addStamp, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
+  join, addStamp, redeemReward, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   stats, listCustomers, verifyPass,
 } = require('./db');
 const { generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured } = require('./wallet');
@@ -176,7 +176,8 @@ app.get('/api/card', (req, res) => {
     FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   res.json({
-    name: c.name, stamps: c.stamps, total_rewards: c.total_rewards, cycle_start: c.cycle_start,
+    name: c.name, stamps: c.stamps, total_rewards: c.total_rewards,
+    pending_rewards: c.total_rewards - (c.redeemed_rewards || 0), cycle_start: c.cycle_start,
     business: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url,
     card_bg: c.card_bg, card_bg_image: c.card_bg_image, card_text_color: c.card_text_color, tagline: c.tagline,
     cycle_days: c.cycle_days,
@@ -195,6 +196,18 @@ app.post('/api/stamp', (req, res) => {
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
   if (!checkPass(req, res, pass => verifyPass(pass, biz.admin_pass))) return;
   try { res.json(addStamp(db, token, biz)); }
+  catch (e) { res.status(400).json({ error: e.message }); }
+});
+
+// Canjear un premio pendiente (misma autenticación que sellar)
+app.post('/api/redeem', (req, res) => {
+  const token = req.body.token;
+  if (!token) return res.status(400).json({ error: 'Falta token' });
+  const customer = db.prepare('SELECT business_id FROM customers WHERE token=?').get(token);
+  if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
+  const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
+  if (!checkPass(req, res, pass => verifyPass(pass, biz.admin_pass))) return;
+  try { res.json(redeemReward(db, token, biz)); }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 

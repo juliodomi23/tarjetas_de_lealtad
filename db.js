@@ -52,6 +52,7 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
     name          TEXT,
     stamps        INTEGER NOT NULL DEFAULT 0,
     total_rewards INTEGER NOT NULL DEFAULT 0,
+    redeemed_rewards INTEGER NOT NULL DEFAULT 0,
     cycle_start   TEXT NOT NULL DEFAULT (datetime('now')),
     created_at    TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
@@ -74,6 +75,7 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE customers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN total_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
+  try { db.exec(`ALTER TABLE customers ADD COLUMN redeemed_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE reward_tiers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE stamps_log ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE businesses ADD COLUMN card_bg TEXT NOT NULL DEFAULT ''`); } catch {}
@@ -217,6 +219,19 @@ function addStamp(db, token, business, cooldownSecs = 120) {
   return { stamps: finalStamps, total_rewards: totalRewards, earned, reset, max_stamps: maxStamps };
 }
 
+// ── Canje ─────────────────────────────────────────────────────────────────────
+
+// Marca un premio ganado como entregado. pending = total_rewards - redeemed_rewards.
+function redeemReward(db, token, business) {
+  const c = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
+  if (!c) throw new Error('Cliente no encontrado');
+  if (c.business_id !== business.id) throw new Error('Tarjeta no válida para este negocio');
+  const pending = (c.total_rewards || 0) - (c.redeemed_rewards || 0);
+  if (pending <= 0) throw new Error('Sin premios pendientes por canjear');
+  db.prepare('UPDATE customers SET redeemed_rewards=redeemed_rewards+1 WHERE token=?').run(token);
+  return { total_rewards: c.total_rewards, redeemed_rewards: c.redeemed_rewards + 1, pending: pending - 1 };
+}
+
 // ── Métricas ──────────────────────────────────────────────────────────────────
 
 function stats(db, businessId) {
@@ -234,7 +249,8 @@ function stats(db, businessId) {
 }
 
 function listCustomers(db, businessId) {
-  return db.prepare(`SELECT name,phone,stamps,total_rewards AS rewards,created_at,cycle_start
+  return db.prepare(`SELECT token,name,phone,stamps,total_rewards AS rewards,
+    total_rewards - redeemed_rewards AS pending_rewards,created_at,cycle_start
     FROM customers WHERE business_id=? ORDER BY created_at DESC`).all(businessId);
 }
 
@@ -243,5 +259,5 @@ module.exports = {
   listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
   normPhone, join,
   getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
-  addStamp, stats, listCustomers,
+  addStamp, redeemReward, stats, listCustomers,
 };

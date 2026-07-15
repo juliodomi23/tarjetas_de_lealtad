@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { openDb, createBusiness, join, addStamp, addRewardTier, stats, listCustomers, verifyPass } = require('./db');
+const { openDb, createBusiness, join, addStamp, redeemReward, addRewardTier, stats, listCustomers, verifyPass } = require('./db');
 
 const db = openDb(':memory:');
 const biz = createBusiness(db, { slug: 'test', name: 'Test', admin_pass: 'x', cycle_days: 30 });
@@ -39,5 +39,13 @@ assert.strictEqual(listCustomers(db, biz.id).length, 1);
 const biz2 = createBusiness(db, { slug: 'otro', name: 'Otro', admin_pass: 'y' });
 assert.throws(() => addStamp(db, t, biz2), /no válida/);
 assert.strictEqual(listCustomers(db, biz2.id).length, 0);
+
+// canje: 1 premio pendiente => canjea una vez y no más
+assert.strictEqual(listCustomers(db, biz.id)[0].pending_rewards, 1);
+r = redeemReward(db, t, biz);
+assert.deepStrictEqual([r.redeemed_rewards, r.pending], [1, 0]);
+assert.throws(() => redeemReward(db, t, biz), /Sin premios/, 'sin pendientes no canjea');
+assert.throws(() => redeemReward(db, t, biz2), /no válida/, 'canje aislado por negocio');
+assert.strictEqual(listCustomers(db, biz.id)[0].pending_rewards, 0);
 
 console.log('OK');

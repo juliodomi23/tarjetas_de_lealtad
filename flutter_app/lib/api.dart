@@ -2,7 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-const apiBase = 'https://lealtad.ambarrojostudios.cloud';
+// Sobreescribible en builds de prueba: flutter run --dart-define=API_BASE=http://10.0.2.2:3000
+const apiBase = String.fromEnvironment('API_BASE',
+    defaultValue: 'https://lealtad.ambarrojostudios.cloud');
 
 class RewardTier {
   final int id, stampsRequired;
@@ -130,6 +132,18 @@ class Api {
   static Future<Map<String, dynamic>> stamp(String token, String pass) async {
     final r = await http.post(
       Uri.parse('$apiBase/api/stamp'),
+      headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
+      body: jsonEncode({'token': token}),
+    );
+    final d = jsonDecode(r.body);
+    if (r.statusCode == 401) throw 'Clave incorrecta';
+    if (r.statusCode != 200) throw d['error'] ?? 'Error';
+    return d;
+  }
+
+  static Future<Map<String, dynamic>> redeem(String token, String pass) async {
+    final r = await http.post(
+      Uri.parse('$apiBase/api/redeem'),
       headers: {'Content-Type': 'application/json', 'Authorization': 'Bearer $pass'},
       body: jsonEncode({'token': token}),
     );

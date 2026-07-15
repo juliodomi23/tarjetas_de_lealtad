@@ -1,7 +1,7 @@
 {
-  "name": "Tarjeta de lealtad",
-  "short_name": "Mi tarjeta",
-  "start_url": "card.html",
+  "name": "Aurum — Tarjeta de lealtad",
+  "short_name": "Aurum",
+  "start_url": "join.html",
   "display": "standalone",
   "background_color": "#0f1220",
   "theme_color": "#0f1220",

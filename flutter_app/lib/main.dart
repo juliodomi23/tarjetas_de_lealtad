@@ -282,6 +282,21 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
               ]),
             ),
           ],
+          if ((d?['pending_rewards'] as int? ?? 0) > 0) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+              decoration: BoxDecoration(color: const Color(0xFFFFF8E1), borderRadius: BorderRadius.circular(12)),
+              child: Row(children: [
+                const Icon(Icons.redeem, size: 18, color: Color(0xFFB45309)),
+                const SizedBox(width: 8),
+                Expanded(child: Text(
+                  '🎁 Tienes ${d!['pending_rewards']} premio${d['pending_rewards'] == 1 ? '' : 's'} por canjear — pídelo en el local.',
+                  style: const TextStyle(fontSize: 12, color: Color(0xFFB45309), fontWeight: FontWeight.w600),
+                )),
+              ]),
+            ),
+          ],
           const SizedBox(height: 16),
           _CycleInfo(cycleEnd: cycleEnd),
           const SizedBox(height: 16),
@@ -768,6 +783,30 @@ class _AdminScreenState extends State<AdminScreen> {
     }
   }
 
+  Future<void> _redeem(dynamic c) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Canjear premio'),
+        content: Text('¿Marcar un premio de ${c['name']} como entregado? (${c['pending_rewards']} pendiente${c['pending_rewards'] == 1 ? '' : 's'})'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancelar')),
+          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Canjear')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await Api.redeem(c['token'], widget.pass);
+      final customers = await Api.adminCustomers(widget.slug, widget.pass);
+      setState(() => _customers = customers);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.toString())));
+      }
+    }
+  }
+
   void _showTierDialog({RewardTier? tier}) {
     final stampsCtrl = TextEditingController(text: tier != null ? '${tier.stampsRequired}' : '');
     final descCtrl = TextEditingController(text: tier?.description ?? '');
@@ -859,6 +898,7 @@ class _AdminScreenState extends State<AdminScreen> {
                         customers: _customers ?? [],
                         search: _search,
                         onSearch: (v) => setState(() => _search = v),
+                        onRedeem: _redeem,
                       ),
                     ],
                   ),
@@ -1315,7 +1355,8 @@ class _CustomerList extends StatelessWidget {
   final List<dynamic> customers;
   final String search;
   final ValueChanged<String> onSearch;
-  const _CustomerList({required this.customers, required this.search, required this.onSearch});
+  final ValueChanged<dynamic> onRedeem;
+  const _CustomerList({required this.customers, required this.search, required this.onSearch, required this.onRedeem});
 
   @override
   Widget build(BuildContext context) {
@@ -1334,14 +1375,15 @@ class _CustomerList extends StatelessWidget {
             prefixIcon: Icon(Icons.search, color: muted)),
       ),
       const SizedBox(height: 10),
-      ...filtered.map((c) => _CustomerTile(c: c)),
+      ...filtered.map((c) => _CustomerTile(c: c, onRedeem: onRedeem)),
     ]);
   }
 }
 
 class _CustomerTile extends StatelessWidget {
   final dynamic c;
-  const _CustomerTile({required this.c});
+  final ValueChanged<dynamic> onRedeem;
+  const _CustomerTile({required this.c, required this.onRedeem});
 
   void _openWhatsApp(String phone) {
     final clean = phone.replaceAll(RegExp(r'\D'), '');
@@ -1373,6 +1415,12 @@ class _CustomerTile extends StatelessWidget {
           Text('${c['rewards']} premios', style: const TextStyle(fontSize: 12, color: muted)),
         ]),
         const SizedBox(width: 8),
+        if ((c['pending_rewards'] ?? 0) > 0)
+          IconButton(
+            icon: const Icon(Icons.redeem, color: Color(0xFFFFB300)),
+            onPressed: () => onRedeem(c),
+            tooltip: 'Canjear premio (${c['pending_rewards']})',
+          ),
         IconButton(
           icon: const Icon(Icons.chat_rounded, color: Color(0xFF25D366)),
           onPressed: () => _openWhatsApp(c['phone'] ?? ''),

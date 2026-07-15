@@ -63,6 +63,11 @@
   .tag { background:#2c3354; border-radius:8px; padding:2px 9px; font-size:.78rem; }
   .tag.win { background:#1f4a32; color:#37d67a; }
   .tag.near { background:#4a3a14; color:#f5a623; }
+  .btn-sm { background:#2c3354; color:#f2f3f7; border:none; border-radius:10px;
+    padding:8px 14px; font-size:.82rem; cursor:pointer; white-space:nowrap; }
+  .btn-sm:hover { background:#39406b; }
+  .btn-redeem { background:#1f4a32; color:#37d67a; }
+  .btn-redeem:hover { background:#276741; }
   .state { color:#8b90a8; text-align:center; padding:28px 0; }
   .spin { width:22px; height:22px; border:3px solid #2c3354; border-top-color:#e23b3b;
     border-radius:50%; display:inline-block; animation:spin .8s linear infinite; vertical-align:middle; }
@@ -217,6 +222,7 @@
       <div class="toolbar">
         <input class="search" id="search" placeholder="Buscar por nombre o teléfono…">
         <span class="count" id="count"></span>
+        <button class="btn-sm" id="csv-btn" type="button">Exportar CSV</button>
       </div>
       <div class="tscroll">
         <table>
@@ -224,9 +230,10 @@
             <th>Nombre</th><th>WhatsApp</th>
             <th class="sortable" data-k="stamps">Sellos <span class="arrow">↕</span></th>
             <th class="sortable" data-k="rewards">Premios <span class="arrow">↕</span></th>
+            <th class="sortable" data-k="pending_rewards">Por canjear <span class="arrow">↕</span></th>
             <th class="sortable" data-k="created_at">Alta <span class="arrow">↕</span></th>
           </tr></thead>
-          <tbody id="rows"><tr><td colspan="5" class="state"><span class="spin"></span></td></tr></tbody>
+          <tbody id="rows"><tr><td colspan="6" class="state"><span class="spin"></span></td></tr></tbody>
         </table>
       </div>
     </div>
@@ -340,15 +347,45 @@
     let list = customers.filter(c => (c.name||'').toLowerCase().includes(q) || c.phone.includes(q));
     list.sort((a,b) => { const x=a[sort.k], y=b[sort.k]; return (x>y?1:x<y?-1:0)*sort.dir; });
     document.getElementById('count').textContent = `${list.length} de ${customers.length}`;
-    const wa = p => '52' + p;
+    // 10 dígitos = número local MX, se antepone lada 52; si ya trae lada se usa tal cual.
+    const wa = p => { const d = p.replace(/\D/g, ''); return d.length === 10 ? '52' + d : d; };
     document.getElementById('rows').innerHTML = list.map(c => `<tr>
       <td data-label="Nombre">${c.name||'—'}</td>
       <td data-label="WhatsApp"><a href="https://wa.me/${wa(c.phone)}" target="_blank">${c.phone}</a></td>
       <td data-label="Sellos">${c.stamps}</td>
       <td data-label="Premios">${c.rewards > 0 ? `<span class="tag win">${c.rewards}</span>` : '0'}</td>
+      <td data-label="Por canjear">${c.pending_rewards > 0
+        ? `<button class="btn-sm btn-redeem" onclick="redeem('${c.token}')">Canjear (${c.pending_rewards})</button>`
+        : '—'}</td>
       <td data-label="Alta">${c.created_at.slice(0,10)}</td>
-    </tr>`).join('') || '<tr><td colspan="5" class="state">Sin clientes.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="6" class="state">Sin clientes.</td></tr>';
   }
+
+  async function redeem(token) {
+    if (!confirm('¿Marcar un premio como entregado?')) return;
+    try {
+      const data = await api('/api/redeem', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      if (data.error) throw new Error(data.error);
+      customers = await api(`/api/${slug}/customers`);
+      renderRows();
+    } catch (e) { alert(e.message || 'Error al canjear'); }
+  }
+
+  document.getElementById('csv-btn').onclick = () => {
+    const esc = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const rows = [['Nombre','Telefono','Sellos','Premios','Por canjear','Alta'],
+      ...customers.map(c => [c.name, c.phone, c.stamps, c.rewards, c.pending_rewards, c.created_at.slice(0,10)])];
+    const csv = '﻿' + rows.map(r => r.map(esc).join(',')).join('\r\n'); // BOM para Excel
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = `clientes-${slug}-${new Date().toISOString().slice(0,10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
 
   document.getElementById('search').oninput = renderRows;
   document.querySelectorAll('th.sortable').forEach(th => th.onclick = () => {
