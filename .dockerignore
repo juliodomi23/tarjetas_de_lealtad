@@ -1,0 +1,12 @@
+node_modules/
+.env
+*.db
+*.db-shm
+*.db-wal
+flutter_app/
+.git
+*.log
+Dockerfile
+docker-compose.yml
+.DS_Store
+Thumbs.db

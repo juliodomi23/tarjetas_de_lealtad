@@ -1,0 +1,17 @@
+services:
+  tarjetas-lealtad:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      SUPER_PASS: ${SUPER_PASS:-cambia-esta-clave}
+      ADMIN_PASS: ${ADMIN_PASS:-cambia-esta-clave}
+      DEFAULT_SLUG: ${DEFAULT_SLUG:-negocio-1}
+      BUSINESS_NAME: ${BUSINESS_NAME:-Mi Negocio}
+      # Opcionales: WEBHOOK_URL (aviso n8n), APPLE_* / GOOGLE_* (wallets)
+    volumes:
+      - lealtad_data:/data
+    restart: unless-stopped
+
+volumes:
+  lealtad_data:
