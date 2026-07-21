@@ -130,7 +130,7 @@ app.get('/api/admin/businesses', superAdmin, (req, res) => {
     ...b,
     customers: db.prepare('SELECT COUNT(*) n FROM customers WHERE business_id=?').get(b.id).n,
     total_stamps: db.prepare('SELECT COUNT(*) n FROM stamps_log WHERE business_id=?').get(b.id).n,
-    new_today: db.prepare(`SELECT COUNT(*) n FROM customers WHERE business_id=? AND date(created_at)=date('now','localtime')`).get(b.id).n,
+    new_today: db.prepare(`SELECT COUNT(*) n FROM customers WHERE business_id=? AND date(created_at,'localtime')=date('now','localtime')`).get(b.id).n,
   }));
   res.json(enriched);
 });

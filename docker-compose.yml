@@ -1,15 +1,22 @@
 services:
   tarjetas-lealtad:
     build: .
-    ports:
-      - "3000:3000"
+    # EasyPanel enruta el dominio a este puerto por su red interna; no se publica
+    # al host para que nadie entre por http://IP:3000 saltándose el HTTPS.
+    # En EasyPanel: Domains → puerto 3000.
+    expose:
+      - "3000"
     environment:
+      TZ: ${TZ:-America/Mexico_City}
+      # Definir en la pestaña Environment de EasyPanel. No dejarlas en el default.
       SUPER_PASS: ${SUPER_PASS:-cambia-esta-clave}
       ADMIN_PASS: ${ADMIN_PASS:-cambia-esta-clave}
       DEFAULT_SLUG: ${DEFAULT_SLUG:-negocio-1}
       BUSINESS_NAME: ${BUSINESS_NAME:-Mi Negocio}
       # Opcionales: WEBHOOK_URL (aviso n8n), APPLE_* / GOOGLE_* (wallets)
     volumes:
+      # OJO: este nombre debe coincidir con el volumen que EasyPanel ya usa para
+      # lealtad, o al re-desplegar se pierden los datos. RESPALDA antes (ver _respaldos).
       - lealtad_data:/data
     restart: unless-stopped
 

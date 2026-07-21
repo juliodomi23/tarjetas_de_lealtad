@@ -352,6 +352,12 @@
     chart.innerHTML = `<div class="chart">${bars}</div><div class="xlabels">${labels}</div>`;
   }
 
+  // Escapa texto del cliente antes de meterlo en innerHTML. El nombre lo teclea
+  // cualquiera desde /join (internet abierto): sin esto, un nombre con <script>
+  // roba la clave del negocio guardada en el navegador (XSS almacenado).
+  const escH = v => String(v ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   function renderRows() {
     const q = document.getElementById('search').value.toLowerCase().trim();
     let list = customers.filter(c => (c.name||'').toLowerCase().includes(q) || c.phone.includes(q));
@@ -360,8 +366,8 @@
     // 10 dígitos = número local MX, se antepone lada 52; si ya trae lada se usa tal cual.
     const wa = p => { const d = p.replace(/\D/g, ''); return d.length === 10 ? '52' + d : d; };
     document.getElementById('rows').innerHTML = list.map(c => `<tr>
-      <td data-label="Nombre">${c.name||'—'}</td>
-      <td data-label="WhatsApp"><a href="https://wa.me/${wa(c.phone)}" target="_blank">${c.phone}</a></td>
+      <td data-label="Nombre">${escH(c.name||'—')}</td>
+      <td data-label="WhatsApp"><a href="https://wa.me/${wa(c.phone)}" target="_blank">${escH(c.phone)}</a></td>
       <td data-label="Sellos">${c.stamps}</td>
       <td data-label="Premios">${c.rewards > 0 ? `<span class="tag win">${c.rewards}</span>` : '0'}</td>
       <td data-label="Por canjear">${c.pending_rewards > 0

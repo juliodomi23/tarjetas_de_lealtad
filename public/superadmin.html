@@ -322,6 +322,12 @@
     return `${location.origin}/admin.html?b=${slug}`;
   }
 
+  // El nombre del negocio lo edita el cliente desde su panel; sin escapar, un
+  // <script> en el nombre se ejecuta AQUÍ, en el panel de Ámbar Rojo, y filtra
+  // la clave de superadmin — control de todos los negocios.
+  const escH = v => String(v ?? '').replace(/[&<>"']/g, c =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
   function renderBusinesses(list) {
     if (!list.length) {
       document.getElementById('biz-container').innerHTML =
@@ -334,8 +340,8 @@
           <div class="biz-header">
             ${colorDot(b.primary_color)}
             <div>
-              <div class="biz-name">${b.name}</div>
-              <div class="biz-slug">${b.slug}</div>
+              <div class="biz-name">${escH(b.name)}</div>
+              <div class="biz-slug">${escH(b.slug)}</div>
             </div>
           </div>
           <div class="biz-stats">
@@ -344,9 +350,9 @@
             <div class="biz-stat"><div class="sn">${b.new_today}</div><div class="sl">Nuevos hoy</div></div>
           </div>
           <div class="biz-actions">
-            <a class="btn-panel" href="/admin.html?b=${b.slug}" target="_blank">Ver panel</a>
-            <button class="btn-edit" onclick="openEdit(${JSON.stringify(b).replace(/"/g,'&quot;')})">Editar</button>
-            <button class="btn-edit" onclick="changePass('${b.slug}')">Cambiar clave</button>
+            <a class="btn-panel" href="/admin.html?b=${encodeURIComponent(b.slug)}" target="_blank">Ver panel</a>
+            <button class="btn-edit" onclick="openEdit(${escH(JSON.stringify(b))})">Editar</button>
+            <button class="btn-edit" onclick="changePass('${escH(b.slug)}')">Cambiar clave</button>
           </div>
         </div>`).join('')}
       </div>`;

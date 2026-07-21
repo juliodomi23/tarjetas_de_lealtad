@@ -242,12 +242,14 @@ function stats(db, businessId) {
     COUNT(*)                       AS customers,
     COALESCE(SUM(stamps),0)        AS in_progress,
     COALESCE(SUM(total_rewards),0) AS rewards,
-    SUM(CASE WHEN date(created_at)=date('now','localtime') THEN 1 ELSE 0 END) AS new_today
+    -- created_at se guarda en UTC; se convierte a local antes de sacar el día,
+    -- si no, con TZ activa "nuevos hoy" se desfasa en la franja de medianoche.
+    SUM(CASE WHEN date(created_at,'localtime')=date('now','localtime') THEN 1 ELSE 0 END) AS new_today
     FROM customers WHERE business_id=?`).get(businessId);
   const visits = db.prepare('SELECT COUNT(*) n FROM stamps_log WHERE business_id=?').get(businessId).n;
-  const daily = db.prepare(`SELECT date(ts) d, COUNT(*) n FROM stamps_log
+  const daily = db.prepare(`SELECT date(ts,'localtime') d, COUNT(*) n FROM stamps_log
     WHERE business_id=? AND ts>=datetime('now','-14 days')
-    GROUP BY date(ts) ORDER BY d`).all(businessId);
+    GROUP BY date(ts,'localtime') ORDER BY d`).all(businessId);
   return { customers: c.customers, visits, rewards: c.rewards, in_progress: c.in_progress, new_today: c.new_today, daily };
 }
 
