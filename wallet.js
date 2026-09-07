@@ -87,12 +87,11 @@ function googleWalletSaveUrl(customer, business, tiers) {
     programName:       `Lealtad ${business.name}`,
     hexBackgroundColor: business.primary_color || '#8B1A1A',
     reviewStatus:      'UNDER_REVIEW',
-    ...(business.logo_url ? {
-      programLogo: {
-        sourceUri: { uri: business.logo_url },
-        contentDescription: { defaultValue: { language: 'es', value: business.name } },
-      },
-    } : {}),
+    // Google Wallet rechaza la clase si no trae programLogo; usamos el logo de Aurum si el negocio no tiene el suyo.
+    programLogo: {
+      sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
+      contentDescription: { defaultValue: { language: 'es', value: business.name } },
+    },
   };
 
   const loyaltyObject = {
