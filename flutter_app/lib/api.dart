@@ -127,6 +127,12 @@ class Api {
     return jsonDecode(r.body);
   }
 
+  static Future<Map<String, dynamic>> wallets() async {
+    final r = await http.get(Uri.parse('$apiBase/api/wallets'));
+    if (r.statusCode != 200) return {'apple': false, 'google': false};
+    return jsonDecode(r.body);
+  }
+
   // ── Staff ───────────────────────────────────────────────────────────────────
 
   static Future<Map<String, dynamic>> stamp(String token, String pass) async {

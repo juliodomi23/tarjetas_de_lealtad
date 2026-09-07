@@ -213,12 +213,14 @@ class _CardPage extends StatefulWidget {
 class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
   Map<String, dynamic>? _data;
   bool _offline = false;
+  Map<String, dynamic> _wallets = const {'apple': false, 'google': false};
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    Api.wallets().then((w) { if (mounted) setState(() => _wallets = w); });
   }
 
   @override
@@ -269,6 +271,10 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
             stamps: stamps,
             maxStamps: maxStamps,
           ),
+          if (_wallets['google'] == true || _wallets['apple'] == true) ...[
+            const SizedBox(height: 16),
+            _WalletButtons(token: widget.lcard.token, wallets: _wallets),
+          ],
           if (_offline) ...[
             const SizedBox(height: 12),
             Container(
@@ -1111,6 +1117,40 @@ class _VisualCard extends StatelessWidget {
             textAlign: TextAlign.center, style: TextStyle(color: txt.withValues(alpha: 0.7), fontSize: 12)),
       ]),
     );
+  }
+}
+
+class _WalletButtons extends StatelessWidget {
+  final String token;
+  final Map<String, dynamic> wallets;
+  const _WalletButtons({required this.token, required this.wallets});
+
+  Future<void> _open(String path) =>
+      launchUrl(Uri.parse('$apiBase$path?t=$token'), mode: LaunchMode.externalApplication);
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(children: [
+      if (wallets['google'] == true)
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _open('/api/pass/google'),
+            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+            label: const Text('Añadir a Google Wallet'),
+          ),
+        ),
+      if (wallets['google'] == true && wallets['apple'] == true) const SizedBox(height: 10),
+      if (wallets['apple'] == true)
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => _open('/api/pass/apple'),
+            icon: const Icon(Icons.account_balance_wallet_outlined, size: 18),
+            label: const Text('Añadir a Apple Wallet'),
+          ),
+        ),
+    ]);
   }
 }
 
