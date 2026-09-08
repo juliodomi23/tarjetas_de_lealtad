@@ -60,7 +60,11 @@ async function generateApplePass(customer, business, tiers) {
       // Sin esto Apple nunca vuelve a pedir el pase: es una foto congelada del
       // momento en que se agrego a Wallet. Con webServiceURL, el telefono se
       // registra y nosotros avisamos por push cuando cambian los sellos.
-      webServiceURL:       `${APP_URL}/apple-wallet/v1`,
+      // Apple agrega "/v1/devices/..." automaticamente a este valor — NO
+      // llevar el /v1 aqui tambien, o Apple llama a una ruta con /v1/v1/
+      // duplicado que no existe (404 silencioso, sin log, nunca se registra
+      // ningun dispositivo). Confirmado con la spec real de PassKit Web Service.
+      webServiceURL:       `${APP_URL}/apple-wallet`,
       authenticationToken: customer.token,
     },
   );

@@ -424,6 +424,14 @@ app.delete('/apple-wallet/v1/devices/:deviceId/registrations/:passTypeId/:serial
 // Apple manda aqui errores del propio telefono; solo hay que responder 200.
 app.post('/apple-wallet/v1/log', (_req, res) => res.status(200).end());
 
+// Cualquier llamada de Apple a una ruta que no matcheamos (ej. por un typo en
+// webServiceURL) antes daba 404 en total silencio, sin quedar rastro en ningun
+// lado — asi se nos fue un bug real varias horas. Ahora al menos queda logueado.
+app.use('/apple-wallet', (req, res) => {
+  console.warn(`apple-wallet: ruta no encontrada ${req.method} ${req.originalUrl}`);
+  res.status(404).end();
+});
+
 // Redirige al link de Google Wallet
 app.get('/api/pass/google', (req, res) => {
   const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
