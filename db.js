@@ -96,7 +96,12 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE businesses ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); } catch {}
   // Se toca cada vez que cambian sellos/premios; Apple Wallet la usa para saber
   // si debe pedir el pase de nuevo (Last-Modified) y para el filtro passesUpdatedSince.
-  try { db.exec(`ALTER TABLE customers ADD COLUMN wallet_updated_at TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
+  // SQLite no deja usar un default no-constante (datetime('now')) en ALTER TABLE
+  // ADD COLUMN — solo constantes. Se agrega vacio y se rellena aparte.
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN wallet_updated_at TEXT NOT NULL DEFAULT ''`);
+    db.exec(`UPDATE customers SET wallet_updated_at=created_at WHERE wallet_updated_at=''`);
+  } catch {}
 
   // Migrar claves en texto plano a scrypt (despliegues anteriores)
   db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
