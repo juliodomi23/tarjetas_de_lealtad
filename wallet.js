@@ -196,13 +196,17 @@ async function updateGoogleLoyaltyClass(business) {
     const access_token = await googleAccessToken(creds);
     if (!access_token) return;
 
-    await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`, {
+    const r = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         issuerName: business.name,
         programName: `Lealtad ${business.name}`,
         hexBackgroundColor: business.primary_color || '#8B1A1A',
+        // Google exige reenviar a revision cualquier cambio de marca a una
+        // clase ya aprobada (rechaza el PATCH si no se manda esto) — mientras
+        // la revisen, el cliente sigue viendo el diseno anterior, no se rompe nada.
+        reviewStatus: 'UNDER_REVIEW',
         programLogo: {
           sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
           contentDescription: { defaultValue: { language: 'es', value: business.name } },
@@ -215,6 +219,7 @@ async function updateGoogleLoyaltyClass(business) {
         } : {}),
       }),
     });
+    if (!r.ok) console.error('actualizar loyaltyClass de Google fallo:', r.status, await r.text());
   } catch (e) { console.error('actualizar loyaltyClass de Google fallo:', e.message); }
 }
 
@@ -232,7 +237,7 @@ async function updateGoogleLoyaltyObject(customer, business, tiers) {
     const access_token = await googleAccessToken(creds);
     if (!access_token) return;
 
-    await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
+    const r = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -245,6 +250,7 @@ async function updateGoogleLoyaltyObject(customer, business, tiers) {
         } : {}),
       }),
     });
+    if (!r.ok) console.error('actualizar loyaltyObject de Google fallo:', r.status, await r.text());
   } catch (e) { console.error('actualizar loyaltyObject de Google fallo:', e.message); }
 }
 
