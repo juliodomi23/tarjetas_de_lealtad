@@ -146,9 +146,11 @@ function loyaltyPointsFields(customer, nextTier) {
     // string:null limpia el balance de texto que pudo quedar de un estado
     // anterior de "premio listo" (mismo choque que arriba, en reversa).
     loyaltyPoints: { label: 'Sellos', balance: { string: null, int: customer.stamps } },
+    // Antes solo decia "Cafe gratis: 3/5" — dejaba que el cliente hiciera la
+    // resta el solo. Ahora dice cuantos faltan de una vez.
     ...(nextTier ? {
       secondaryLoyaltyPoints: {
-        label:   nextTier.description,
+        label:   `Faltan ${nextTier.stamps_required - customer.stamps} para: ${nextTier.description}`,
         balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
       },
     } : {}),
@@ -204,7 +206,9 @@ function googleWalletSaveUrl(customer, business, tiers) {
     id:          objectId,
     classId,
     state:       'ACTIVE',
-    accountId:   customer.phone,
+    // Sin accountId: Google Wallet lo usa como texto de respaldo cerca del
+    // codigo de barras sin ninguna etiqueta — se veia como un numero suelto
+    // random (el telefono del cliente). No lo usamos para nada, se quita.
     accountName: customer.name || 'Cliente',
     // Sin alternateText: si no, Google Wallet muestra el token interno del
     // cliente como texto crudo debajo del QR (feo y no le sirve de nada).
