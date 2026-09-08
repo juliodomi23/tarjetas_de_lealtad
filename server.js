@@ -1,7 +1,10 @@
 const express = require('express');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const {
-  openDb, listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
+  openDb, listBusinesses, getBusinessBySlug, createBusiness, updateBusiness, deleteBusiness,
   join, addStamp, redeemReward, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   stats, listCustomers, verifyPass,
 } = require('./db');
@@ -73,7 +76,6 @@ function checkPass(req, res, verify) {
 
 // SUPER_PASS viene del entorno (no de la BD), se compara en texto plano tiempo-constante
 function superPassOk(pass) {
-  const crypto = require('crypto');
   return pass.length === SUPER_PASS.length &&
     crypto.timingSafeEqual(Buffer.from(pass), Buffer.from(SUPER_PASS));
 }
@@ -86,7 +88,7 @@ function withBusiness(req, res, next) {
   const slug = req.params.slug || req.query.b;
   if (!slug) return res.status(400).json({ error: 'Falta el negocio (b=slug)' });
   const biz = getBusinessBySlug(db, slug);
-  if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
+  if (!biz || !biz.active) return res.status(404).json({ error: 'Negocio no encontrado' });
   req.biz = biz;
   next();
 }
@@ -123,9 +125,17 @@ app.put('/api/admin/businesses/:slug', superAdmin, (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
-// Vista enriquecida para el panel de Ámbar Rojo (incluye métricas y admin_pass)
+// Borrado definitivo: negocio + todos sus clientes, sellos y recompensas
+app.delete('/api/admin/businesses/:slug', superAdmin, (req, res) => {
+  const biz = getBusinessBySlug(db, req.params.slug);
+  if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
+  deleteBusiness(db, req.params.slug);
+  res.json({ ok: true });
+});
+
+// Vista enriquecida para el panel de Ámbar Rojo (incluye métricas, activos e inactivos)
 app.get('/api/admin/businesses', superAdmin, (req, res) => {
-  const list = listBusinesses(db);
+  const list = listBusinesses(db, { all: true });
   const enriched = list.map(b => ({
     ...b,
     customers: db.prepare('SELECT COUNT(*) n FROM customers WHERE business_id=?').get(b.id).n,
@@ -134,6 +144,34 @@ app.get('/api/admin/businesses', superAdmin, (req, res) => {
   }));
   res.json(enriched);
 });
+
+// ── Subida de logo (dueño o super-admin) ──────────────────────────────────────
+
+// Se guarda junto a la base de datos (volumen persistente), no en public/:
+// el código de la app se reemplaza en cada deploy, /data no.
+const LOGO_DIR = path.join(path.dirname(path.resolve(process.env.DB_FILE || 'loyalty.db')), 'uploads', 'logos');
+fs.mkdirSync(LOGO_DIR, { recursive: true });
+app.use('/uploads/logos', express.static(LOGO_DIR));
+
+const uploadLogo = multer({
+  storage: multer.diskStorage({
+    destination: LOGO_DIR,
+    filename: (req, file, cb) => cb(null, crypto.randomBytes(8).toString('hex') + path.extname(file.originalname).toLowerCase()),
+  }),
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => cb(null, /^image\/(png|jpe?g|webp)$/.test(file.mimetype)),
+}).single('logo');
+
+function handleLogoUpload(req, res) {
+  uploadLogo(req, res, err => {
+    if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Imagen muy pesada (máx 2MB)' : 'Error al subir imagen' });
+    if (!req.file) return res.status(400).json({ error: 'Sube una imagen png, jpg o webp' });
+    res.json({ url: `/uploads/logos/${req.file.filename}` });
+  });
+}
+
+app.post('/api/uploads/logo', superAdmin, handleLogoUpload);
+app.post('/api/:slug/logo', withBusiness, staff, handleLogoUpload);
 
 // ── Config por negocio (público) ──────────────────────────────────────────────
 
@@ -163,7 +201,7 @@ app.post('/api/join', (req, res) => {
   joinLog.set(req.ip, hits);
 
   const biz = getBusinessBySlug(db, req.body.business_slug);
-  if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
+  if (!biz || !biz.active) return res.status(404).json({ error: 'Negocio no encontrado' });
   try {
     const token = join(db, biz.id, req.body.phone, req.body.name);
     res.json({ token, business: { id: biz.id, slug: biz.slug, name: biz.name, primary_color: biz.primary_color, logo_url: biz.logo_url,
@@ -216,6 +254,7 @@ app.post('/api/stamp', (req, res) => {
   const customer = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
   if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
+  if (!biz.active) return res.status(403).json({ error: 'Negocio desactivado' });
   if (!checkPass(req, res, stampPassOk(biz))) return;
   try {
     const result = addStamp(db, token, biz);
@@ -231,6 +270,7 @@ app.post('/api/redeem', (req, res) => {
   const customer = db.prepare('SELECT business_id FROM customers WHERE token=?').get(token);
   if (!customer) return res.status(404).json({ error: 'Cliente no encontrado' });
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
+  if (!biz.active) return res.status(403).json({ error: 'Negocio desactivado' });
   if (!checkPass(req, res, stampPassOk(biz))) return;
   try { res.json(redeemReward(db, token, biz)); }
   catch (e) { res.status(400).json({ error: e.message }); }

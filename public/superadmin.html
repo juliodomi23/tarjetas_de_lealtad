@@ -172,9 +172,16 @@
     <div class="field"><label>Slug (URL-friendly, único)</label><input id="n-slug" type="text" placeholder="cafe-el-sol"></div>
     <div class="field"><label>Nombre del negocio</label><input id="n-name" type="text" placeholder="Café El Sol"></div>
     <div class="field"><label>Color principal (hex)</label><input id="n-color" type="text" value="#E23B3B" maxlength="7"></div>
-    <div class="field"><label>URL del logo (opcional)</label><input id="n-logo" type="url" placeholder="https://..."></div>
+    <div class="field">
+      <label>Logo (recomendado — sin logo, Google/Apple Wallet pueden rechazar la tarjeta)</label>
+      <input id="n-logo" type="url" placeholder="https://...">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="n-logo-file" type="file" accept="image/png,image/jpeg,image/webp" style="flex:1;font-size:.8rem">
+        <span class="err-msg" id="n-logo-msg" style="margin:0;min-height:auto"></span>
+      </div>
+    </div>
     <div class="field"><label>Duración del ciclo (días)</label><input id="n-cycle" type="number" value="30" min="1"></div>
-    <div class="field"><label>Clave del personal (admin_pass)</label><input id="n-pass" type="text" placeholder="clave-segura-123"></div>
+    <div class="field"><label>Clave del personal (admin_pass)</label><input id="n-pass" type="password" placeholder="clave-segura-123" autocomplete="new-password"></div>
     <div class="err-msg" id="n-err"></div>
     <div class="modal-actions">
       <button class="cancel" id="n-cancel">Cancelar</button>
@@ -190,7 +197,14 @@
     <input type="hidden" id="e-slug">
     <div class="field"><label>Nombre del negocio</label><input id="e-name" type="text"></div>
     <div class="field"><label>Color principal (hex)</label><input id="e-color" type="text" maxlength="7"></div>
-    <div class="field"><label>URL del logo (opcional)</label><input id="e-logo" type="url"></div>
+    <div class="field">
+      <label>Logo (recomendado — sin logo, Google/Apple Wallet pueden rechazar la tarjeta)</label>
+      <input id="e-logo" type="url">
+      <div style="display:flex;align-items:center;gap:8px;margin-top:6px">
+        <input id="e-logo-file" type="file" accept="image/png,image/jpeg,image/webp" style="flex:1;font-size:.8rem">
+        <span class="err-msg" id="e-logo-msg" style="margin:0;min-height:auto"></span>
+      </div>
+    </div>
     <div class="field"><label>Duración del ciclo (días)</label><input id="e-cycle" type="number" min="1"></div>
     <div class="err-msg" id="e-err"></div>
     <div class="modal-actions">
@@ -295,6 +309,50 @@
     return data;
   }
 
+  // ── Subir logo (crea o edita) ────────────────────────────────────────────────
+  async function uploadLogo(file, urlInputId, msgId) {
+    const msg = document.getElementById(msgId);
+    msg.textContent = 'Subiendo…'; msg.style.color = '#8b90a8';
+    const fd = new FormData();
+    fd.append('logo', file);
+    try {
+      const r = await fetch('/api/uploads/logo', { method: 'POST', headers: { 'Authorization': 'Bearer ' + superPass }, body: fd });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Error al subir');
+      document.getElementById(urlInputId).value = data.url;
+      msg.textContent = '✓ Subido'; msg.style.color = '#37d67a';
+    } catch (e) {
+      msg.textContent = e.message; msg.style.color = '#e23b3b';
+    }
+  }
+  document.getElementById('n-logo-file').onchange = e =>
+    e.target.files[0] && uploadLogo(e.target.files[0], 'n-logo', 'n-logo-msg');
+  document.getElementById('e-logo-file').onchange = e =>
+    e.target.files[0] && uploadLogo(e.target.files[0], 'e-logo', 'e-logo-msg');
+
+  // ── Activar / desactivar / borrar ─────────────────────────────────────────────
+  async function toggleActive(slug, active) {
+    try {
+      await api(`/api/admin/businesses/${slug}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: active ? 1 : 0 }),
+      });
+      toast(active ? 'Negocio reactivado.' : 'Negocio desactivado: ya no puede sellar ni recibir clientes nuevos.');
+      load();
+    } catch (e) { toast('Error: ' + e.message); }
+  }
+
+  async function removeBusiness(slug, name) {
+    if (!confirm(`¿Borrar "${name}" para siempre? Se pierden sus clientes, sellos y recompensas. No se puede deshacer.`)) return;
+    if (!confirm('Confirma de nuevo: esto borra TODO su historial permanentemente. ¿Seguro?')) return;
+    try {
+      await api(`/api/admin/businesses/${slug}`, { method: 'DELETE' });
+      toast('Negocio borrado.');
+      load();
+    } catch (e) { toast('Error: ' + e.message); }
+  }
+
   // ── Render ────────────────────────────────────────────────────────────────────
   function colorDot(color, size = 42) {
     return `<div class="biz-dot" style="background:${color};box-shadow:0 6px 16px ${color}55;width:${size}px;height:${size}px;">
@@ -306,7 +364,7 @@
   }
 
   function renderKpis(list) {
-    const total   = list.length;
+    const total   = list.filter(b => b.active).length;
     const clients = list.reduce((s,b) => s + b.customers, 0);
     const stamps  = list.reduce((s,b) => s + b.total_stamps, 0);
     const newHoy  = list.reduce((s,b) => s + b.new_today, 0);
@@ -336,11 +394,11 @@
     }
     document.getElementById('biz-container').innerHTML =
       `<div class="biz-grid">${list.map(b => `
-        <div class="biz-card">
+        <div class="biz-card" style="${b.active ? '' : 'opacity:.55'}">
           <div class="biz-header">
             ${colorDot(b.primary_color)}
             <div>
-              <div class="biz-name">${escH(b.name)}</div>
+              <div class="biz-name">${escH(b.name)} ${b.active ? '' : '<span class="tag" style="background:#4a1414;color:#f87171">Inactivo</span>'}</div>
               <div class="biz-slug">${escH(b.slug)}</div>
             </div>
           </div>
@@ -353,6 +411,10 @@
             <a class="btn-panel" href="/admin.html?b=${encodeURIComponent(b.slug)}" target="_blank">Ver panel</a>
             <button class="btn-edit" onclick="openEdit(${escH(JSON.stringify(b))})">Editar</button>
             <button class="btn-edit" onclick="changePass('${escH(b.slug)}')">Cambiar clave</button>
+          </div>
+          <div class="biz-actions" style="margin-top:8px">
+            <button class="btn-edit" onclick="toggleActive('${escH(b.slug)}', ${b.active ? 'false' : 'true'})">${b.active ? 'Desactivar' : 'Reactivar'}</button>
+            <button class="btn-edit" style="color:#f87171" onclick="removeBusiness('${escH(b.slug)}', '${escH(b.name).replace(/'/g,"\\'")}')">Borrar</button>
           </div>
         </div>`).join('')}
       </div>`;

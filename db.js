@@ -84,6 +84,7 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE businesses ADD COLUMN card_text_color TEXT NOT NULL DEFAULT ''`); } catch {}
   try { db.exec(`ALTER TABLE businesses ADD COLUMN tagline TEXT NOT NULL DEFAULT ''`); } catch {}
   try { db.exec(`ALTER TABLE businesses ADD COLUMN staff_pass TEXT NOT NULL DEFAULT ''`); } catch {}
+  try { db.exec(`ALTER TABLE businesses ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); } catch {}
 
   // Migrar claves en texto plano a scrypt (despliegues anteriores)
   db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
@@ -102,8 +103,21 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
 
 // ── Negocios ─────────────────────────────────────────────────────────────────
 
-function listBusinesses(db) {
-  return db.prepare('SELECT id,slug,name,primary_color,logo_url,card_bg,card_bg_image,card_text_color,tagline,cycle_days FROM businesses ORDER BY id').all();
+function listBusinesses(db, { all = false } = {}) {
+  return db.prepare(`SELECT id,slug,name,primary_color,logo_url,card_bg,card_bg_image,card_text_color,tagline,cycle_days,active
+    FROM businesses ${all ? '' : 'WHERE active=1'} ORDER BY id`).all();
+}
+
+// Borra el negocio y todo lo suyo (clientes, sellos, recompensas). No hay vuelta atrás.
+function deleteBusiness(db, slug) {
+  const biz = getBusinessBySlug(db, slug);
+  if (!biz) return;
+  db.transaction(() => {
+    db.prepare('DELETE FROM stamps_log WHERE business_id=?').run(biz.id);
+    db.prepare('DELETE FROM customers WHERE business_id=?').run(biz.id);
+    db.prepare('DELETE FROM reward_tiers WHERE business_id=?').run(biz.id);
+    db.prepare('DELETE FROM businesses WHERE id=?').run(biz.id);
+  })();
 }
 
 function getBusinessBySlug(db, slug) {
@@ -130,7 +144,7 @@ function createBusiness(db, { slug, name, primary_color = '#E23B3B', logo_url = 
 
 function updateBusiness(db, slug, fields) {
   checkColors(fields);
-  const allowed = ['name', 'primary_color', 'logo_url', 'card_bg', 'card_bg_image', 'card_text_color', 'tagline', 'cycle_days', 'admin_pass', 'staff_pass'];
+  const allowed = ['name', 'primary_color', 'logo_url', 'card_bg', 'card_bg_image', 'card_text_color', 'tagline', 'cycle_days', 'admin_pass', 'staff_pass', 'active'];
   // staff_pass vacío = desactivada (el personal usa la del dueño); solo se hashea si trae valor
   const sets = allowed.filter(k => fields[k] !== undefined).map(k => `${k}=?`).join(',');
   const vals = allowed.filter(k => fields[k] !== undefined)
@@ -261,7 +275,7 @@ function listCustomers(db, businessId) {
 
 module.exports = {
   openDb, parseDbDate, hashPass, verifyPass,
-  listBusinesses, getBusinessBySlug, createBusiness, updateBusiness,
+  listBusinesses, getBusinessBySlug, createBusiness, updateBusiness, deleteBusiness,
   normPhone, join,
   getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   addStamp, redeemReward, stats, listCustomers,
