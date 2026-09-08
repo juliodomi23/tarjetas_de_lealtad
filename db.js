@@ -84,7 +84,14 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   // Migraciones para despliegues anteriores (columnas nuevas)
   try { db.exec(`ALTER TABLE customers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN total_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
-  try { db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
+  // Mismo problema que wallet_updated_at abajo: SQLite no acepta un default
+  // no-constante en ALTER TABLE ADD COLUMN. En esta base no truena porque
+  // cycle_start ya nace en el CREATE TABLE de arriba, pero se deja bien por
+  // si algun dia corre esto contra una base realmente vieja sin la columna.
+  try {
+    db.exec(`ALTER TABLE customers ADD COLUMN cycle_start TEXT NOT NULL DEFAULT ''`);
+    db.exec(`UPDATE customers SET cycle_start=created_at WHERE cycle_start=''`);
+  } catch {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN redeemed_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
   try { db.exec(`ALTER TABLE reward_tiers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE stamps_log ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
