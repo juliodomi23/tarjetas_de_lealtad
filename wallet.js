@@ -15,6 +15,18 @@ function appleConfigured() {
     process.env.APPLE_KEY);
 }
 
+// Logo/foto del negocio son URLs configuradas por el dueño; se descargan al vuelo
+// y se meten al .pkpass como logo.png/strip.png. Si fallan (URL caída, timeout),
+// el pase se genera igual sin esa imagen — nunca debe tronar por esto.
+async function fetchImageBuffer(url) {
+  if (!url) return null;
+  try {
+    const r = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!r.ok) return null;
+    return Buffer.from(await r.arrayBuffer());
+  } catch { return null; }
+}
+
 async function generateApplePass(customer, business, tiers) {
   if (!appleConfigured()) throw new Error('Apple Wallet no configurado');
 
@@ -45,20 +57,29 @@ async function generateApplePass(customer, business, tiers) {
     },
   );
 
-  pass.headerFields.push({
-    key: 'stamps', label: 'SELLOS',
-    value: `${customer.stamps} / ${maxStamps}`,
+  // Nombre chico arriba (como "NAME" en el header) y los sellos grandes al centro
+  // — así se ve una tarjeta de lealtad real, no una ficha con el nombre gigante.
+  pass.headerFields.push({ key: 'name', label: 'CLIENTE', value: customer.name || 'Cliente' });
+  pass.primaryFields.push({
+    key: 'stamps',
+    label: nextTier ? nextTier.description.toUpperCase() : 'SELLOS',
+    value: `${customer.stamps} / ${maxStamps} ★`,
   });
-  pass.primaryFields.push({ key: 'name', label: 'CLIENTE', value: customer.name || 'Cliente' });
   if (nextTier) {
-    pass.secondaryFields.push({ key: 'premio', label: 'PRÓXIMO PREMIO', value: nextTier.description });
-    pass.auxiliaryFields.push({ key: 'left',   label: 'FALTAN',         value: `${left} sellos` });
+    pass.auxiliaryFields.push({ key: 'left', label: 'FALTAN', value: `${left} sellos` });
   }
   pass.backFields.push(
     { key: 'howto',   label: '¿Cómo usar?', value: 'Muestra el código QR en el mostrador. El staff lo escanea y acumulas un sello.' },
     { key: 'negocio', label: 'Negocio',     value: business.name },
   );
   pass.setBarcodes({ message: customer.token, format: 'PKBarcodeFormatQR', messageEncoding: 'iso-8859-1' });
+
+  const [logoBuf, stripBuf] = await Promise.all([
+    fetchImageBuffer(business.logo_url),
+    fetchImageBuffer(business.card_bg_image),
+  ]);
+  if (logoBuf) pass.addBuffer('logo.png', logoBuf);
+  if (stripBuf) pass.addBuffer('strip.png', stripBuf);
 
   return pass.getAsBuffer();
 }
@@ -93,6 +114,14 @@ function googleWalletSaveUrl(customer, business, tiers) {
       sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
       contentDescription: { defaultValue: { language: 'es', value: business.name } },
     },
+    // Foto de fondo del negocio (misma que usa la tarjeta en la app); sin ella
+    // Google Wallet se ve bien igual, solo sin la banda de imagen arriba.
+    ...(business.card_bg_image ? {
+      heroImage: {
+        sourceUri: { uri: business.card_bg_image },
+        contentDescription: { defaultValue: { language: 'es', value: business.name } },
+      },
+    } : {}),
   };
 
   const loyaltyObject = {

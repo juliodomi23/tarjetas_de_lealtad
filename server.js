@@ -326,13 +326,13 @@ app.get('/api/wallets', (_req, res) => res.json({ apple: appleConfigured(), goog
 
 // Descarga .pkpass para Apple Wallet
 app.get('/api/pass/apple', async (req, res) => {
-  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.id AS business_id
+  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
     FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   try {
     const buf = await generateApplePass(
       { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
-      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url },
+      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
       getRewardTiers(db, c.business_id),
     );
     res.set({ 'Content-Type': 'application/vnd.apple.pkpass', 'Content-Disposition': 'attachment; filename="aurum.pkpass"' });
@@ -342,13 +342,13 @@ app.get('/api/pass/apple', async (req, res) => {
 
 // Redirige al link de Google Wallet
 app.get('/api/pass/google', (req, res) => {
-  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.id AS business_id
+  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
     FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   try {
     const url = googleWalletSaveUrl(
       { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
-      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url },
+      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
       getRewardTiers(db, c.business_id),
     );
     res.redirect(url);
