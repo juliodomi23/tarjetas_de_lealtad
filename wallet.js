@@ -274,6 +274,10 @@ function sendApplePush(pushToken) {
       ':method': 'POST',
       ':path': `/3/device/${pushToken}`,
       'apns-topic': process.env.APPLE_PASS_TYPE_ID,
+      // Sin esto APNs puede demorar la entrega arbitrariamente (la prioridad
+      // por defecto no es inmediata) — para el "wake up y revisa tu pase" de
+      // Wallet, Apple pide mandarla con prioridad alta.
+      'apns-priority': '10',
     });
     req.on('response', () => { client.close(); resolve(); });
     req.on('error', () => { client.close(); resolve(); });
