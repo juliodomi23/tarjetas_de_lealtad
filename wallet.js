@@ -307,7 +307,18 @@ async function updateGoogleLoyaltyObject(customer, business, tiers) {
     const r = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(loyaltyPointsFields(customer, nextTier)),
+      // PATCH solo toca los campos que se mandan — objetos creados antes de un
+      // fix (accountId, alternateText del barcode, textModulesData) se quedaban
+      // viejos para siempre aunque el resto del codigo ya estuviera corregido.
+      // Cada sello/canje ahora resincroniza todo el objeto, no solo los sellos,
+      // asi que cualquier tarjeta vieja se autocorrige la proxima vez que se use.
+      body: JSON.stringify({
+        accountName: customer.name || 'Cliente',
+        accountId: null,
+        barcode: { type: 'QR_CODE', value: customer.token, alternateText: null },
+        textModulesData: [{ id: 'cliente', header: 'CLIENTE', body: customer.name || 'Cliente' }],
+        ...loyaltyPointsFields(customer, nextTier),
+      }),
     });
     if (!r.ok) console.error('actualizar loyaltyObject de Google fallo:', r.status, await r.text());
   } catch (e) { console.error('actualizar loyaltyObject de Google fallo:', e.message); }
