@@ -109,6 +109,8 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
     db.exec(`ALTER TABLE customers ADD COLUMN wallet_updated_at TEXT NOT NULL DEFAULT ''`);
     db.exec(`UPDATE customers SET wallet_updated_at=created_at WHERE wallet_updated_at=''`);
   } catch {}
+  // Nombre del premio que se muestra en Wallet al ganarlo (en vez de "premio listo" generico).
+  try { db.exec(`ALTER TABLE customers ADD COLUMN last_reward_label TEXT NOT NULL DEFAULT ''`); } catch {}
 
   // Migrar claves en texto plano a scrypt (despliegues anteriores)
   db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
@@ -244,6 +246,8 @@ function addStamp(db, token, business, cooldownSecs = 120) {
   const newStamps = currentStamps + 1;
   const earned = tiers.filter(t => prevStamps < t.stamps_required && newStamps >= t.stamps_required);
   const totalRewards = (c.total_rewards || 0) + earned.length;
+  // El ultimo premio cruzado es el que se muestra en Wallet ("Cafe gratis" en vez de generico).
+  const rewardLabel = earned.length ? earned[earned.length - 1].description : c.last_reward_label;
 
   let finalStamps = newStamps;
   let reset = false;
@@ -253,8 +257,8 @@ function addStamp(db, token, business, cooldownSecs = 120) {
     reset = true;
   }
 
-  db.prepare(`UPDATE customers SET stamps=?,total_rewards=?,cycle_start=?,wallet_updated_at=datetime('now') WHERE token=?`)
-    .run(finalStamps, totalRewards, cycleStart, token);
+  db.prepare(`UPDATE customers SET stamps=?,total_rewards=?,cycle_start=?,last_reward_label=?,wallet_updated_at=datetime('now') WHERE token=?`)
+    .run(finalStamps, totalRewards, cycleStart, rewardLabel, token);
   db.prepare('INSERT INTO stamps_log (token,business_id) VALUES (?,?)').run(token, business.id);
 
   return { stamps: finalStamps, total_rewards: totalRewards, earned, reset, max_stamps: maxStamps };

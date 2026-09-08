@@ -80,7 +80,7 @@ async function generateApplePass(customer, business, tiers) {
     // esperando. Esto manda arriba y grande, antes que el progreso normal.
     pass.primaryFields.push({
       key: 'reward',
-      label: pendingRewards > 1 ? `${pendingRewards} PREMIOS LISTOS` : 'PREMIO LISTO',
+      label: pendingRewards > 1 ? `${pendingRewards} PREMIOS LISTOS` : (customer.reward_label || 'PREMIO LISTO').toUpperCase(),
       value: '🎁 Pídelo en el mostrador',
     });
     pass.secondaryFields.push({
@@ -131,7 +131,7 @@ function loyaltyPointsFields(customer, nextTier) {
       // int:null explicito, se queda el int viejo Y el string nuevo a la vez,
       // y Google lo rechaza (400 "More than one type of loyalty point balances").
       loyaltyPoints: {
-        label: pendingRewards > 1 ? `${pendingRewards} premios listos` : '🎁 Premio listo',
+        label: pendingRewards > 1 ? `${pendingRewards} premios listos` : `🎁 ${customer.reward_label || 'Premio listo'}`,
         balance: { int: null, string: 'Pídelo en el mostrador' },
       },
       ...(nextTier ? {

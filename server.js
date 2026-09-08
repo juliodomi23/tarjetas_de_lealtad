@@ -264,7 +264,7 @@ function notifyWalletChanged(token) {
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(c.business_id);
   const tiers = getRewardTiers(db, c.business_id);
   updateGoogleLoyaltyObject(
-    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards },
+    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards, reward_label: c.last_reward_label },
     { name: biz.name, slug: biz.slug },
     tiers,
   ).catch(() => {});
@@ -361,7 +361,7 @@ function customerWithBusiness(token) {
 
 async function buildApplePassBuffer(c) {
   return generateApplePass(
-    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards },
+    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards, reward_label: c.last_reward_label },
     { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image, card_text_color: c.card_text_color },
     getRewardTiers(db, c.business_id),
   );
@@ -439,7 +439,7 @@ app.get('/api/pass/google', (req, res) => {
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   try {
     const url = googleWalletSaveUrl(
-      { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards },
+      { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone, pending_rewards: c.total_rewards - c.redeemed_rewards, reward_label: c.last_reward_label },
       { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
       getRewardTiers(db, c.business_id),
     );
