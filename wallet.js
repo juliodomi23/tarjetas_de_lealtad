@@ -26,10 +26,11 @@ async function generateApplePass(customer, business, tiers) {
     {
       model: path.join(__dirname, 'pass-models/stamp.pass'),
       certificates: {
-        wwdr:                Buffer.from(process.env.APPLE_WWDR, 'base64'),
-        signerCert:          Buffer.from(process.env.APPLE_CERT, 'base64'),
-        signerKey:           Buffer.from(process.env.APPLE_KEY,  'base64'),
-        signerKeyPassphrase: process.env.APPLE_KEY_PASS || '',
+        wwdr:       Buffer.from(process.env.APPLE_WWDR, 'base64'),
+        signerCert: Buffer.from(process.env.APPLE_CERT, 'base64'),
+        signerKey:  Buffer.from(process.env.APPLE_KEY,  'base64'),
+        // passkit-generator rechaza signerKeyPassphrase vacio; solo se manda si la llave tiene contrasena.
+        ...(process.env.APPLE_KEY_PASS ? { signerKeyPassphrase: process.env.APPLE_KEY_PASS } : {}),
       },
     },
     {
