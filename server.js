@@ -166,7 +166,9 @@ function handleLogoUpload(req, res) {
   uploadLogo(req, res, err => {
     if (err) return res.status(400).json({ error: err.code === 'LIMIT_FILE_SIZE' ? 'Imagen muy pesada (máx 2MB)' : 'Error al subir imagen' });
     if (!req.file) return res.status(400).json({ error: 'Sube una imagen png, jpg o webp' });
-    res.json({ url: `/uploads/logos/${req.file.filename}` });
+    // URL absoluta: Google/Apple Wallet la descargan desde sus propios servidores,
+    // una ruta relativa (/uploads/...) no significa nada para ellos.
+    res.json({ url: `${req.protocol}://${req.get('host')}/uploads/logos/${req.file.filename}` });
   });
 }
 
