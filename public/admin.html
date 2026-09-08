@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Panel — Dueño</title>
 <link rel="stylesheet" href="style.css">
+<script src="/qrcode.min.js"></script>
 <style>
   body { display:block; align-items:initial; padding:18px; }
   .wrap { max-width:1200px; margin:0 auto; }
@@ -135,6 +136,34 @@
   .tier-form button { background:#e23b3b; color:#fff; border:none; border-radius:10px;
     padding:8px 16px; font-size:.85rem; font-weight:600; cursor:pointer; font-family:inherit; }
 
+  /* ── Vista previa Wallet ── */
+  .preview-row { display:flex; gap:22px; flex-wrap:wrap; justify-content:center; margin-bottom:10px; }
+  .phone-mock { text-align:center; width:230px; }
+  .phone-caption { color:#8b90a8; font-size:.78rem; margin-top:8px; }
+  .wallet-card { border-radius:16px; padding:16px; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+    box-shadow:0 10px 30px rgba(0,0,0,.35); min-height:260px; text-align:left; overflow:hidden; position:relative; }
+  .wallet-card .wc-logo { width:28px; height:28px; border-radius:50%; background:rgba(255,255,255,.25);
+    display:inline-flex; align-items:center; justify-content:center; overflow:hidden; flex:none; }
+  .wallet-card .wc-logo img { width:100%; height:100%; object-fit:cover; }
+  .wallet-card .wc-top { display:flex; align-items:center; gap:8px; margin-bottom:14px; }
+  .wallet-card .wc-small { font-size:.62rem; opacity:.75; text-transform:uppercase; letter-spacing:.04em; }
+  .wallet-card .wc-name { font-size:.8rem; font-weight:600; }
+  .wallet-card .wc-label { font-size:.62rem; opacity:.75; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px; }
+  .wallet-card .wc-value { font-size:1.5rem; font-weight:700; }
+  .wallet-card .wc-aux { font-size:.7rem; margin-top:10px; opacity:.85; }
+  .wallet-card .wc-strip { height:60px; margin:14px -16px -16px; background-size:cover; background-position:center; }
+  .ios-card .wc-name { font-size:.72rem; }
+  .and-card { padding-bottom:14px; }
+  .and-card .wc-biz { font-size:.78rem; font-weight:600; }
+  .and-card .wc-title { font-size:1.1rem; font-weight:700; margin-bottom:12px; }
+  .and-card .wc-member { margin-bottom:14px; }
+  .and-card .wc-row { display:flex; justify-content:space-between; gap:10px; margin-bottom:12px; }
+  .and-card .wc-row .wc-right { text-align:right; }
+  .and-card .wc-row .wc-value { font-size:1.3rem; }
+  .and-card .wc-qr { background:#fff; color:#111; width:60px; height:60px; margin:0 auto 4px;
+    border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:1.4rem; letter-spacing:-2px; }
+  .and-card .center { text-align:center; }
+
   :focus-visible { outline:2px solid #e23b3b; outline-offset:2px; border-radius:6px; }
   @media (prefers-reduced-motion:reduce) { * { transition:none !important; animation:none !important; } }
 
@@ -224,6 +253,64 @@
         <input type="number" id="t-stamps" min="1" placeholder="Sellos" title="Sellos requeridos">
         <input type="text" id="t-desc" placeholder="Descripción del premio">
         <button id="t-add">+ Agregar</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vista previa Wallet -->
+  <div class="panel">
+    <h2>Cómo se ve la tarjeta</h2>
+    <div class="preview-row">
+      <div class="phone-mock">
+        <div class="wallet-card ios-card" id="prev-ios">
+          <div class="wc-top">
+            <span class="wc-logo" id="prev-logo-ios"></span>
+            <span class="wc-name">Cliente ejemplo</span>
+          </div>
+          <div class="wc-label" id="prev-ios-label">SELLOS</div>
+          <div class="wc-value" id="prev-ios-value">3 / 5 ★</div>
+          <div class="wc-aux" id="prev-ios-aux"></div>
+          <div class="wc-strip" id="prev-ios-strip"></div>
+        </div>
+        <p class="phone-caption">Apple Wallet</p>
+      </div>
+      <div class="phone-mock">
+        <div class="wallet-card and-card" id="prev-and">
+          <div class="wc-top">
+            <span class="wc-logo" id="prev-logo-and"></span>
+            <span class="wc-biz" id="prev-and-biz">Mi Negocio</span>
+          </div>
+          <div class="wc-title" id="prev-and-title">Lealtad Mi Negocio</div>
+          <div class="wc-member">
+            <div class="wc-small">Member name</div>
+            <div class="wc-name">Cliente ejemplo</div>
+          </div>
+          <div class="wc-row">
+            <div><div class="wc-small">Sellos</div><div class="wc-value" id="prev-and-stamps">3</div></div>
+            <div class="wc-right"><div class="wc-small" id="prev-and-tierlabel">Faltan 2 para: premio</div><div class="wc-value" id="prev-and-tierprog">3 / 5</div></div>
+          </div>
+          <div class="wc-qr">▦▦</div>
+          <div class="wc-small center">Sellos</div>
+          <div class="wc-strip" id="prev-and-strip"></div>
+        </div>
+        <p class="phone-caption">Google Wallet</p>
+      </div>
+    </div>
+    <p style="color:#8b90a8;font-size:.78rem;text-align:center;margin:0 0 16px">
+      Aproximado — el color de texto y contraste final los ajusta Wallet en el teléfono.
+    </p>
+    <hr style="border:none;border-top:1px solid #2c3354;margin:0 0 16px">
+    <label style="display:block;font-size:.78rem;color:#8b90a8;margin-bottom:8px">
+      Liga para que un cliente se dé de alta y agregue su tarjeta real — muéstrasela o que la escanee
+    </label>
+    <div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+      <div id="join-qr" style="background:#fff;border-radius:12px;padding:8px;line-height:0"></div>
+      <div style="flex:1;min-width:220px">
+        <div class="field" style="margin-bottom:8px">
+          <input id="join-link" type="text" readonly onclick="this.select()">
+        </div>
+        <button class="btn-sm" id="join-copy" type="button">Copiar liga</button>
+        <span class="save-msg" id="join-copy-msg"></span>
       </div>
     </div>
   </div>
@@ -428,7 +515,74 @@
     document.getElementById('s-cardtext').value = s.card_text_color || '';
     document.getElementById('s-tagline').value  = s.tagline || '';
     document.getElementById('s-cycle').value    = s.cycle_days || 30;
+    renderPreview();
+    setupJoinLink();
   }
+
+  // ── Vista previa Apple/Google Wallet ─────────────────────────────────────────
+  // Mismo criterio de contraste que wallet.js (autoTextColor) — asi la vista
+  // previa coincide con lo que Wallet realmente pinta en el telefono.
+  function autoTextColor(hex) {
+    const n = parseInt((hex || '').replace('#', ''), 16);
+    if (isNaN(n)) return '#fff';
+    const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.6 ? '#141414' : '#fff';
+  }
+
+  function renderPreview() {
+    const name    = document.getElementById('s-business').value.trim() || 'Mi Negocio';
+    const color   = document.getElementById('s-color').value.trim() || '#8B1A1A';
+    const logo    = document.getElementById('s-logo').value.trim();
+    const strip   = document.getElementById('s-cardbgimg').value.trim();
+    const textCol = document.getElementById('s-cardtext').value.trim() || autoTextColor(color);
+
+    // Sellos de ejemplo a la mitad del primer premio, para que se vea "faltan X" con datos reales.
+    const tier = tiers[0];
+    const max  = tier ? tier.stamps_required : 5;
+    const sample = Math.max(1, Math.floor(max / 2));
+    const left = tier ? tier.stamps_required - sample : 0;
+
+    [document.getElementById('prev-ios'), document.getElementById('prev-and')].forEach(c => {
+      c.style.background = color; c.style.color = textCol;
+    });
+    ['prev-logo-ios', 'prev-logo-and'].forEach(id => {
+      document.getElementById(id).innerHTML = logo ? `<img src="${logo}" alt="">` : '';
+    });
+    ['prev-ios-strip', 'prev-and-strip'].forEach(id => {
+      document.getElementById(id).style.backgroundImage = strip ? `url('${strip.replace(/'/g, "%27")}')` : 'none';
+    });
+
+    document.getElementById('prev-ios-label').textContent = tier ? tier.description.toUpperCase() : 'SELLOS';
+    document.getElementById('prev-ios-value').textContent = `${sample} / ${max} ★`;
+    document.getElementById('prev-ios-aux').textContent   = tier ? `FALTAN ${left} sellos` : '';
+
+    document.getElementById('prev-and-biz').textContent   = name;
+    document.getElementById('prev-and-title').textContent = `Lealtad ${name}`;
+    document.getElementById('prev-and-stamps').textContent = sample;
+    document.getElementById('prev-and-tierlabel').textContent = tier ? `Faltan ${left} para: ${tier.description}` : 'Sellos';
+    document.getElementById('prev-and-tierprog').textContent  = tier ? `${sample} / ${max}` : '';
+  }
+  ['s-business', 's-color', 's-logo', 's-cardbgimg', 's-cardtext'].forEach(id =>
+    document.getElementById(id).addEventListener('input', renderPreview));
+
+  // ── Liga de alta para clientes (QR + copiar) ────────────────────────────────
+  function setupJoinLink() {
+    const url = `${location.origin}/join?b=${slug}`;
+    document.getElementById('join-link').value = url;
+    const box = document.getElementById('join-qr');
+    box.innerHTML = '';
+    new QRCode(box, { text: url, width: 120, height: 120, colorDark: '#000', colorLight: '#fff' });
+  }
+  document.getElementById('join-copy').onclick = async () => {
+    const msg = document.getElementById('join-copy-msg');
+    try {
+      await navigator.clipboard.writeText(document.getElementById('join-link').value);
+      msg.textContent = '✓ Copiada'; msg.className = 'save-msg ok';
+    } catch {
+      msg.textContent = 'No se pudo copiar'; msg.className = 'save-msg err';
+    }
+    setTimeout(() => { msg.textContent = ''; }, 2500);
+  };
 
   document.getElementById('s-logo-file').onchange = async e => {
     const file = e.target.files[0];
@@ -503,12 +657,15 @@
   };
 
   // ── Tiers ────────────────────────────────────────────────────────────────────
+  let tiers = [];
   async function loadTiers() {
-    const tiers = await api(`/api/${slug}/reward-tiers`);
+    tiers = await api(`/api/${slug}/reward-tiers`);
     renderTiers(tiers);
+    renderPreview();
   }
 
-  function renderTiers(tiers) {
+  function renderTiers(list) {
+    tiers = list;
     const ul = document.getElementById('tier-list');
     if (!tiers.length) { ul.innerHTML = '<li style="color:#8b90a8;font-size:.85rem">Sin recompensas configuradas.</li>'; return; }
     ul.innerHTML = tiers.map(t => `
@@ -532,6 +689,7 @@
       body: JSON.stringify({ stamps_required: stamps, description: desc }),
     });
     renderTiers(tiers);
+    renderPreview();
     document.getElementById('t-stamps').value = '';
     document.getElementById('t-desc').value   = '';
   };
@@ -540,6 +698,7 @@
     if (!confirm('¿Eliminar esta recompensa?')) return;
     const tiers = await api(`/api/${slug}/reward-tiers/${id}`, { method: 'DELETE' });
     renderTiers(tiers);
+    renderPreview();
   }
 
   async function editTier(id, stamps, desc) {
@@ -553,6 +712,7 @@
       body: JSON.stringify({ stamps_required: Number(newStamps), description: newDesc }),
     });
     renderTiers(tiers);
+    renderPreview();
   }
 
   // ── Load all ─────────────────────────────────────────────────────────────────
