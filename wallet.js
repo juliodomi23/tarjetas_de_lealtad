@@ -161,13 +161,25 @@ function googleConfigured() {
   return !!(jwt && process.env.GOOGLE_SERVICE_ACCOUNT && process.env.GOOGLE_ISSUER_ID);
 }
 
-// Por defecto Google Wallet no pinta accountName en la vista frontal de la
-// tarjeta (solo en el detalle expandido) — este override le dice que si lo
-// muestre, en su propia fila.
+// Sin esto, Google Wallet solo pinta logo/titulo/foto en el frente — ni el
+// nombre del cliente ni los sellos se ven, aunque el objeto los traiga bien
+// (confirmado con capturas reales: el objeto llegaba limpio y aun asi no
+// aparecia nada de esto). Cada fila hay que pedirla explicita.
 const CARD_TEMPLATE_OVERRIDE = {
   cardRowTemplateInfos: [
     { oneItem: { item: { firstValue: { fields: [{ fieldPath: 'object.accountName' }] } } } },
+    { twoItems: {
+        startItem: { firstValue: { fields: [{ fieldPath: 'object.loyaltyPoints.balance' }] } },
+        endItem:   { firstValue: { fields: [{ fieldPath: 'object.secondaryLoyaltyPoints.balance' }] } },
+    } },
   ],
+};
+
+// Sin esto, Wallet mete el token interno del cliente como texto de respaldo
+// debajo del QR (el "numero raro") — se reemplaza por la etiqueta del premio
+// ("Sellos" o "Premio listo"), que si le sirve al cliente.
+const CARD_BARCODE_SECTION = {
+  firstBottomDetail: { fieldSelector: { fields: [{ fieldPath: 'object.loyaltyPoints.label' }] } },
 };
 
 function googleWalletSaveUrl(customer, business, tiers) {
@@ -186,7 +198,7 @@ function googleWalletSaveUrl(customer, business, tiers) {
     programName:       `Lealtad ${business.name}`,
     hexBackgroundColor: business.primary_color || '#8B1A1A',
     reviewStatus:      'UNDER_REVIEW',
-    classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE },
+    classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE, cardBarcodeSectionDetails: CARD_BARCODE_SECTION },
     // Google Wallet rechaza la clase si no trae programLogo; usamos el logo de Aurum si el negocio no tiene el suyo.
     programLogo: {
       sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
@@ -273,7 +285,7 @@ async function updateGoogleLoyaltyClass(business) {
         // clase ya aprobada (rechaza el PATCH si no se manda esto) — mientras
         // la revisen, el cliente sigue viendo el diseno anterior, no se rompe nada.
         reviewStatus: 'UNDER_REVIEW',
-        classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE },
+        classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE, cardBarcodeSectionDetails: CARD_BARCODE_SECTION },
         programLogo: {
           sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
           contentDescription: { defaultValue: { language: 'es', value: business.name } },
