@@ -72,6 +72,15 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
     ts          TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
 
+  // Dispositivos que registraron un pase para recibir actualizaciones push (Apple Wallet).
+  db.exec(`CREATE TABLE IF NOT EXISTS apple_devices (
+    device_id     TEXT NOT NULL,
+    pass_type_id  TEXT NOT NULL,
+    serial_number TEXT NOT NULL,
+    push_token    TEXT NOT NULL,
+    PRIMARY KEY (device_id, serial_number)
+  )`);
+
   // Migraciones para despliegues anteriores (columnas nuevas)
   try { db.exec(`ALTER TABLE customers ADD COLUMN business_id INTEGER NOT NULL DEFAULT 1`); } catch {}
   try { db.exec(`ALTER TABLE customers ADD COLUMN total_rewards INTEGER NOT NULL DEFAULT 0`); } catch {}
@@ -85,6 +94,9 @@ function openDb(file = 'loyalty.db', seedBusiness = null) {
   try { db.exec(`ALTER TABLE businesses ADD COLUMN tagline TEXT NOT NULL DEFAULT ''`); } catch {}
   try { db.exec(`ALTER TABLE businesses ADD COLUMN staff_pass TEXT NOT NULL DEFAULT ''`); } catch {}
   try { db.exec(`ALTER TABLE businesses ADD COLUMN active INTEGER NOT NULL DEFAULT 1`); } catch {}
+  // Se toca cada vez que cambian sellos/premios; Apple Wallet la usa para saber
+  // si debe pedir el pase de nuevo (Last-Modified) y para el filtro passesUpdatedSince.
+  try { db.exec(`ALTER TABLE customers ADD COLUMN wallet_updated_at TEXT NOT NULL DEFAULT (datetime('now'))`); } catch {}
 
   // Migrar claves en texto plano a scrypt (despliegues anteriores)
   db.prepare(`SELECT id, admin_pass FROM businesses WHERE admin_pass NOT LIKE 'scrypt:%'`).all()
@@ -229,7 +241,7 @@ function addStamp(db, token, business, cooldownSecs = 120) {
     reset = true;
   }
 
-  db.prepare('UPDATE customers SET stamps=?,total_rewards=?,cycle_start=? WHERE token=?')
+  db.prepare(`UPDATE customers SET stamps=?,total_rewards=?,cycle_start=?,wallet_updated_at=datetime('now') WHERE token=?`)
     .run(finalStamps, totalRewards, cycleStart, token);
   db.prepare('INSERT INTO stamps_log (token,business_id) VALUES (?,?)').run(token, business.id);
 
@@ -245,8 +257,34 @@ function redeemReward(db, token, business) {
   if (c.business_id !== business.id) throw new Error('Tarjeta no válida para este negocio');
   const pending = (c.total_rewards || 0) - (c.redeemed_rewards || 0);
   if (pending <= 0) throw new Error('Sin premios pendientes por canjear');
-  db.prepare('UPDATE customers SET redeemed_rewards=redeemed_rewards+1 WHERE token=?').run(token);
+  db.prepare(`UPDATE customers SET redeemed_rewards=redeemed_rewards+1,wallet_updated_at=datetime('now') WHERE token=?`).run(token);
   return { total_rewards: c.total_rewards, redeemed_rewards: c.redeemed_rewards + 1, pending: pending - 1 };
+}
+
+// ── Apple Wallet: dispositivos registrados para push updates ──────────────────
+
+function registerAppleDevice(db, deviceId, passTypeId, serialNumber, pushToken) {
+  db.prepare(`INSERT INTO apple_devices (device_id,pass_type_id,serial_number,push_token) VALUES (?,?,?,?)
+    ON CONFLICT(device_id,serial_number) DO UPDATE SET push_token=excluded.push_token`)
+    .run(deviceId, passTypeId, serialNumber, pushToken);
+}
+
+function unregisterAppleDevice(db, deviceId, serialNumber) {
+  db.prepare('DELETE FROM apple_devices WHERE device_id=? AND serial_number=?').run(deviceId, serialNumber);
+}
+
+// Serie de tokens (pases) registrados a este dispositivo que cambiaron desde `since`.
+function serialsForDevice(db, deviceId, passTypeId, since) {
+  const rows = db.prepare(`
+    SELECT c.token, c.wallet_updated_at FROM apple_devices d
+    JOIN customers c ON c.token = d.serial_number
+    WHERE d.device_id=? AND d.pass_type_id=?`).all(deviceId, passTypeId);
+  const changed = rows.filter(r => !since || r.wallet_updated_at > since);
+  return { serialNumbers: changed.map(r => r.token), lastUpdated: rows.reduce((m, r) => r.wallet_updated_at > m ? r.wallet_updated_at : m, '') };
+}
+
+function pushTokensForSerial(db, serialNumber) {
+  return db.prepare('SELECT push_token FROM apple_devices WHERE serial_number=?').all(serialNumber).map(r => r.push_token);
 }
 
 // ── Métricas ──────────────────────────────────────────────────────────────────
@@ -279,4 +317,5 @@ module.exports = {
   normPhone, join,
   getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   addStamp, redeemReward, stats, listCustomers,
+  registerAppleDevice, unregisterAppleDevice, serialsForDevice, pushTokensForSerial,
 };

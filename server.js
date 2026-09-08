@@ -7,8 +7,12 @@ const {
   openDb, listBusinesses, getBusinessBySlug, createBusiness, updateBusiness, deleteBusiness,
   join, addStamp, redeemReward, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   stats, listCustomers, verifyPass,
+  registerAppleDevice, unregisterAppleDevice, serialsForDevice, pushTokensForSerial,
 } = require('./db');
-const { generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured } = require('./wallet');
+const {
+  generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured,
+  sendApplePush, updateGoogleLoyaltyObject,
+} = require('./wallet');
 
 const PORT       = process.env.PORT || 3000;
 const SUPER_PASS = process.env.SUPER_PASS || 'super-cambiar';
@@ -249,6 +253,22 @@ function notifyEarned(biz, customer, result) {
   }).catch(e => console.error('webhook n8n falló:', e.message));
 }
 
+// Avisa a Apple/Google Wallet que el pase de este cliente cambio (sellos o
+// canje) — sin esto la tarjeta se queda pegada con el numero de cuando se
+// agrego. Nunca bloquea la respuesta al staff: fire-and-forget con su propio catch.
+function notifyWalletChanged(token) {
+  const c = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
+  if (!c) return;
+  const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(c.business_id);
+  const tiers = getRewardTiers(db, c.business_id);
+  updateGoogleLoyaltyObject(
+    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
+    { name: biz.name, slug: biz.slug },
+    tiers,
+  ).catch(() => {});
+  pushTokensForSerial(db, token).forEach(pt => sendApplePush(pt).catch(() => {}));
+}
+
 // El token ya identifica al negocio; verificamos el pass contra ese negocio.
 app.post('/api/stamp', (req, res) => {
   const token = req.body.token;
@@ -261,6 +281,7 @@ app.post('/api/stamp', (req, res) => {
   try {
     const result = addStamp(db, token, biz);
     notifyEarned(biz, customer, result);
+    notifyWalletChanged(token);
     res.json(result);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
@@ -274,7 +295,11 @@ app.post('/api/redeem', (req, res) => {
   const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
   if (!biz.active) return res.status(403).json({ error: 'Negocio desactivado' });
   if (!checkPass(req, res, stampPassOk(biz))) return;
-  try { res.json(redeemReward(db, token, biz)); }
+  try {
+    const result = redeemReward(db, token, biz);
+    notifyWalletChanged(token);
+    res.json(result);
+  }
   catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -326,21 +351,75 @@ app.get('/join', (_req, res) => res.sendFile(path.join(__dirname, 'public/join.h
 // Qué wallets están configurados (para la UI)
 app.get('/api/wallets', (_req, res) => res.json({ apple: appleConfigured(), google: googleConfigured() }));
 
+function customerWithBusiness(token) {
+  return db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
+    FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(token);
+}
+
+async function buildApplePassBuffer(c) {
+  return generateApplePass(
+    { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
+    { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
+    getRewardTiers(db, c.business_id),
+  );
+}
+
 // Descarga .pkpass para Apple Wallet
 app.get('/api/pass/apple', async (req, res) => {
-  const c = db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
-    FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(req.query.t);
+  const c = customerWithBusiness(req.query.t);
   if (!c) return res.status(404).json({ error: 'No encontrado' });
   try {
-    const buf = await generateApplePass(
-      { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
-      { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
-      getRewardTiers(db, c.business_id),
-    );
+    const buf = await buildApplePassBuffer(c);
     res.set({ 'Content-Type': 'application/vnd.apple.pkpass', 'Content-Disposition': 'attachment; filename="aurum.pkpass"' });
     res.send(buf);
   } catch (e) { res.status(503).json({ error: e.message }); }
 });
+
+// ── Apple Wallet: Web Service (protocolo de actualizaciones push) ─────────────
+// El pase trae authenticationToken=token del cliente; Apple manda
+// "Authorization: ApplePass <token>" en cada llamada de este servicio.
+function appleAuthOk(req, token) {
+  return (req.headers.authorization || '') === `ApplePass ${token}`;
+}
+
+// El telefono registra el device+pase la primera vez que lo agrega a Wallet.
+app.post('/apple-wallet/v1/devices/:deviceId/registrations/:passTypeId/:serial', (req, res) => {
+  const c = customerWithBusiness(req.params.serial);
+  if (!c || !appleAuthOk(req, c.token)) return res.status(401).end();
+  const pushToken = req.body && req.body.pushToken;
+  if (!pushToken) return res.status(400).end();
+  registerAppleDevice(db, req.params.deviceId, req.params.passTypeId, req.params.serial, pushToken);
+  res.status(201).json({});
+});
+
+// Apple pregunta, para un dispositivo, cuales de sus pases registrados cambiaron.
+app.get('/apple-wallet/v1/devices/:deviceId/registrations/:passTypeId', (req, res) => {
+  const { serialNumbers, lastUpdated } = serialsForDevice(db, req.params.deviceId, req.params.passTypeId, req.query.passesUpdatedSince);
+  if (!serialNumbers.length) return res.status(204).end();
+  res.json({ serialNumbers, lastUpdated });
+});
+
+// El telefono pide el pase actualizado (llega solo despues del push, o de vez en cuando).
+app.get('/apple-wallet/v1/passes/:passTypeId/:serial', async (req, res) => {
+  const c = customerWithBusiness(req.params.serial);
+  if (!c || !appleAuthOk(req, c.token)) return res.status(401).end();
+  try {
+    const buf = await buildApplePassBuffer(c);
+    res.set({ 'Content-Type': 'application/vnd.apple.pkpass', 'Last-Modified': c.wallet_updated_at });
+    res.send(buf);
+  } catch (e) { res.status(503).json({ error: e.message }); }
+});
+
+// El usuario quito el pase de Wallet — dejar de mandarle push.
+app.delete('/apple-wallet/v1/devices/:deviceId/registrations/:passTypeId/:serial', (req, res) => {
+  const c = customerWithBusiness(req.params.serial);
+  if (!c || !appleAuthOk(req, c.token)) return res.status(401).end();
+  unregisterAppleDevice(db, req.params.deviceId, req.params.serial);
+  res.status(200).end();
+});
+
+// Apple manda aqui errores del propio telefono; solo hay que responder 200.
+app.post('/apple-wallet/v1/log', (_req, res) => res.status(200).end());
 
 // Redirige al link de Google Wallet
 app.get('/api/pass/google', (req, res) => {

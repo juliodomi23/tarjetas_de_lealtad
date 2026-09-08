@@ -1,5 +1,8 @@
 'use strict';
 const path = require('path');
+const http2 = require('http2');
+
+const APP_URL = process.env.APP_URL || 'https://lealtad.ambarrojostudios.cloud';
 
 // ── Apple Wallet ──────────────────────────────────────────────────────────────
 
@@ -54,6 +57,11 @@ async function generateApplePass(customer, business, tiers) {
       backgroundColor:    `rgb(${hexToRgb(business.primary_color || '#8B1A1A')})`,
       foregroundColor:    'rgb(255,255,255)',
       labelColor:         'rgb(201,168,76)',
+      // Sin esto Apple nunca vuelve a pedir el pase: es una foto congelada del
+      // momento en que se agrego a Wallet. Con webServiceURL, el telefono se
+      // registra y nosotros avisamos por push cuando cambian los sellos.
+      webServiceURL:       `${APP_URL}/apple-wallet/v1`,
+      authenticationToken: customer.token,
     },
   );
 
@@ -158,6 +166,75 @@ function googleWalletSaveUrl(customer, business, tiers) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
+// El link "savetowallet" solo crea/actualiza el objeto la primera vez que el
+// cliente le da "Guardar". Sellar despues no vuelve a llamar ese link, asi que
+// sin esto la tarjeta se queda pegada con el numero de sellos de cuando se
+// guardo. Google Wallet SI se actualiza solo en el telefono una vez que el
+// objeto cambia aqui (a diferencia de Apple, no hace falta avisarle nada mas).
+async function updateGoogleLoyaltyObject(customer, business, tiers) {
+  if (!googleConfigured()) return;
+  try {
+    const creds    = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+    const objectId = `${process.env.GOOGLE_ISSUER_ID}.${customer.token}`;
+    const nextTier = tiers.find(t => t.stamps_required > customer.stamps);
+
+    const now = Math.floor(Date.now() / 1000);
+    const authJwt = jwt.sign(
+      { iss: creds.client_email, scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+        aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 },
+      creds.private_key, { algorithm: 'RS256' },
+    );
+    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: authJwt }),
+    });
+    const { access_token } = await tokenRes.json();
+    if (!access_token) return;
+
+    await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
+        ...(nextTier ? {
+          secondaryLoyaltyPoints: {
+            label:   nextTier.description,
+            balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
+          },
+        } : {}),
+      }),
+    });
+  } catch (e) { console.error('actualizar loyaltyObject de Google fallo:', e.message); }
+}
+
+// Avisa al iPhone (via APNs) que revise de nuevo el pase — dispara la llamada
+// del telefono a GET /apple-wallet/v1/passes/... El mismo certificado que firma
+// el pase sirve para autenticar el push (es un Pass Type ID cert, no necesita
+// llave .p8 aparte). Silencioso si falla: un push perdido no debe tronar nada.
+function sendApplePush(pushToken) {
+  return new Promise(resolve => {
+    if (!appleConfigured()) return resolve();
+    let client;
+    try {
+      client = http2.connect('https://api.push.apple.com', {
+        cert: Buffer.from(process.env.APPLE_CERT, 'base64'),
+        key:  Buffer.from(process.env.APPLE_KEY,  'base64'),
+        passphrase: process.env.APPLE_KEY_PASS || undefined,
+      });
+    } catch { return resolve(); }
+    client.on('error', () => resolve());
+    const req = client.request({
+      ':method': 'POST',
+      ':path': `/3/device/${pushToken}`,
+      'apns-topic': process.env.APPLE_PASS_TYPE_ID,
+    });
+    req.on('response', () => { client.close(); resolve(); });
+    req.on('error', () => { client.close(); resolve(); });
+    req.end('{}');
+  });
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function hexToRgb(hex) {
@@ -165,4 +242,7 @@ function hexToRgb(hex) {
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
 }
 
-module.exports = { generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured };
+module.exports = {
+  generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured,
+  sendApplePush, updateGoogleLoyaltyObject,
+};
