@@ -159,6 +159,15 @@ function googleConfigured() {
   return !!(jwt && process.env.GOOGLE_SERVICE_ACCOUNT && process.env.GOOGLE_ISSUER_ID);
 }
 
+// Por defecto Google Wallet no pinta accountName en la vista frontal de la
+// tarjeta (solo en el detalle expandido) — este override le dice que si lo
+// muestre, en su propia fila.
+const CARD_TEMPLATE_OVERRIDE = {
+  cardRowTemplateInfos: [
+    { oneItem: { item: { firstValue: { fields: [{ fieldPath: 'object.accountName' }] } } } },
+  ],
+};
+
 function googleWalletSaveUrl(customer, business, tiers) {
   if (!googleConfigured()) throw new Error('Google Wallet no configurado');
 
@@ -175,6 +184,7 @@ function googleWalletSaveUrl(customer, business, tiers) {
     programName:       `Lealtad ${business.name}`,
     hexBackgroundColor: business.primary_color || '#8B1A1A',
     reviewStatus:      'UNDER_REVIEW',
+    classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE },
     // Google Wallet rechaza la clase si no trae programLogo; usamos el logo de Aurum si el negocio no tiene el suyo.
     programLogo: {
       sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
@@ -259,6 +269,7 @@ async function updateGoogleLoyaltyClass(business) {
         // clase ya aprobada (rechaza el PATCH si no se manda esto) — mientras
         // la revisen, el cliente sigue viendo el diseno anterior, no se rompe nada.
         reviewStatus: 'UNDER_REVIEW',
+        classTemplateInfo: { cardTemplateOverride: CARD_TEMPLATE_OVERRIDE },
         programLogo: {
           sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
           contentDescription: { defaultValue: { language: 'es', value: business.name } },
