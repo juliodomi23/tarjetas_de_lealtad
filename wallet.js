@@ -72,11 +72,29 @@ async function generateApplePass(customer, business, tiers) {
   // Nombre chico arriba (como "NAME" en el header) y los sellos grandes al centro
   // — así se ve una tarjeta de lealtad real, no una ficha con el nombre gigante.
   pass.headerFields.push({ key: 'name', label: 'CLIENTE', value: customer.name || 'Cliente' });
-  pass.primaryFields.push({
-    key: 'stamps',
-    label: nextTier ? nextTier.description.toUpperCase() : 'SELLOS',
-    value: `${customer.stamps} / ${maxStamps} ★`,
-  });
+
+  const pendingRewards = customer.pending_rewards || 0;
+  if (pendingRewards > 0) {
+    // Al ganar, los sellos se reinician a 0 para el siguiente ciclo — sin esto
+    // la tarjeta no dice nada y el cliente puede olvidar que ya tiene un premio
+    // esperando. Esto manda arriba y grande, antes que el progreso normal.
+    pass.primaryFields.push({
+      key: 'reward',
+      label: pendingRewards > 1 ? `${pendingRewards} PREMIOS LISTOS` : 'PREMIO LISTO',
+      value: '🎁 Pídelo en el mostrador',
+    });
+    pass.secondaryFields.push({
+      key: 'stamps',
+      label: nextTier ? nextTier.description.toUpperCase() : 'SELLOS',
+      value: `${customer.stamps} / ${maxStamps}`,
+    });
+  } else {
+    pass.primaryFields.push({
+      key: 'stamps',
+      label: nextTier ? nextTier.description.toUpperCase() : 'SELLOS',
+      value: `${customer.stamps} / ${maxStamps} ★`,
+    });
+  }
   if (nextTier) {
     pass.auxiliaryFields.push({ key: 'left', label: 'FALTAN', value: `${left} sellos` });
   }
@@ -100,6 +118,37 @@ async function generateApplePass(customer, business, tiers) {
 
 let jwt;
 try { jwt = require('jsonwebtoken'); } catch (_) {}
+
+// Compartido entre el link de "guardar" y la actualizacion en vivo: si hay
+// premio pendiente, el area grande (loyaltyPoints) avisa eso en vez del
+// numero de sellos — sin esto, al ganar y reiniciarse a 0 el cliente puede
+// olvidar que ya tiene un premio esperando.
+function loyaltyPointsFields(customer, nextTier) {
+  const pendingRewards = customer.pending_rewards || 0;
+  if (pendingRewards > 0) {
+    return {
+      loyaltyPoints: {
+        label: pendingRewards > 1 ? `${pendingRewards} premios listos` : '🎁 Premio listo',
+        balance: { string: 'Pídelo en el mostrador' },
+      },
+      ...(nextTier ? {
+        secondaryLoyaltyPoints: {
+          label: 'Sellos',
+          balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
+        },
+      } : {}),
+    };
+  }
+  return {
+    loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
+    ...(nextTier ? {
+      secondaryLoyaltyPoints: {
+        label:   nextTier.description,
+        balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
+      },
+    } : {}),
+  };
+}
 
 function googleConfigured() {
   return !!(jwt && process.env.GOOGLE_SERVICE_ACCOUNT && process.env.GOOGLE_ISSUER_ID);
@@ -142,17 +191,11 @@ function googleWalletSaveUrl(customer, business, tiers) {
     state:       'ACTIVE',
     accountId:   customer.phone,
     accountName: customer.name || 'Cliente',
-    loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
     // Sin alternateText: si no, Google Wallet muestra el token interno del
     // cliente como texto crudo debajo del QR (feo y no le sirve de nada).
     barcode: { type: 'QR_CODE', value: customer.token },
     textModulesData: [{ id: 'cliente', header: 'CLIENTE', body: customer.name || 'Cliente' }],
-    ...(nextTier ? {
-      secondaryLoyaltyPoints: {
-        label:   nextTier.description,
-        balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
-      },
-    } : {}),
+    ...loyaltyPointsFields(customer, nextTier),
   };
 
   const token = jwt.sign(
@@ -244,15 +287,7 @@ async function updateGoogleLoyaltyObject(customer, business, tiers) {
     const r = await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
-        ...(nextTier ? {
-          secondaryLoyaltyPoints: {
-            label:   nextTier.description,
-            balance: { string: `${customer.stamps} / ${nextTier.stamps_required}` },
-          },
-        } : {}),
-      }),
+      body: JSON.stringify(loyaltyPointsFields(customer, nextTier)),
     });
     if (!r.ok) console.error('actualizar loyaltyObject de Google fallo:', r.status, await r.text());
   } catch (e) { console.error('actualizar loyaltyObject de Google fallo:', e.message); }
