@@ -5,22 +5,11 @@
   "organizationName": "Aurum",
   "description": "Tarjeta de Lealtad",
   "storeCard": {
-    "headerFields": [
-      { "key": "stamps", "label": "SELLOS", "value": "0" }
-    ],
-    "primaryFields": [
-      { "key": "name", "label": "CLIENTE", "value": "Cliente" }
-    ],
-    "secondaryFields": [
-      { "key": "premio", "label": "PRÓXIMO PREMIO", "value": "" }
-    ],
-    "auxiliaryFields": [
-      { "key": "left", "label": "FALTAN", "value": "" }
-    ],
-    "backFields": [
-      { "key": "howto",   "label": "¿Cómo usar?", "value": "Muestra el código QR en el mostrador para acumular sellos." },
-      { "key": "negocio", "label": "Negocio",     "value": "" }
-    ]
+    "headerFields": [],
+    "primaryFields": [],
+    "secondaryFields": [],
+    "auxiliaryFields": [],
+    "backFields": []
   },
   "barcodes": [
     {
