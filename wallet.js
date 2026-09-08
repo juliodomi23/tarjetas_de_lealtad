@@ -166,6 +166,58 @@ function googleWalletSaveUrl(customer, business, tiers) {
   return `https://pay.google.com/gp/v/save/${token}`;
 }
 
+// Token OAuth2 para hablar con la Wallet REST API (a diferencia del JWT
+// "savetowallet", que solo sirve para el link de guardar del lado del cliente).
+async function googleAccessToken(creds) {
+  const now = Math.floor(Date.now() / 1000);
+  const authJwt = jwt.sign(
+    { iss: creds.client_email, scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
+      aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 },
+    creds.private_key, { algorithm: 'RS256' },
+  );
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: authJwt }),
+  });
+  return (await r.json()).access_token;
+}
+
+// El link "savetowallet" solo CREA la clase la primera vez; una vez que Google
+// la aprueba, ese mismo link ya no la vuelve a actualizar (para que una marca
+// no cambie su branding sin pasar de nuevo por revision) — asi que cambiar el
+// logo o la foto en el panel no se veia reflejado aunque el codigo los mandara
+// bien. Hay que empujarlos con un PATCH explicito a la clase por su cuenta.
+async function updateGoogleLoyaltyClass(business) {
+  if (!googleConfigured()) return;
+  try {
+    const creds   = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+    const classId = `${process.env.GOOGLE_ISSUER_ID}.${business.slug}`;
+    const access_token = await googleAccessToken(creds);
+    if (!access_token) return;
+
+    await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyClass/${classId}`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${access_token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        issuerName: business.name,
+        programName: `Lealtad ${business.name}`,
+        hexBackgroundColor: business.primary_color || '#8B1A1A',
+        programLogo: {
+          sourceUri: { uri: business.logo_url || 'https://lealtad.ambarrojostudios.cloud/Logo.jpg' },
+          contentDescription: { defaultValue: { language: 'es', value: business.name } },
+        },
+        ...(business.card_bg_image ? {
+          heroImage: {
+            sourceUri: { uri: business.card_bg_image },
+            contentDescription: { defaultValue: { language: 'es', value: business.name } },
+          },
+        } : {}),
+      }),
+    });
+  } catch (e) { console.error('actualizar loyaltyClass de Google fallo:', e.message); }
+}
+
 // El link "savetowallet" solo crea/actualiza el objeto la primera vez que el
 // cliente le da "Guardar". Sellar despues no vuelve a llamar ese link, asi que
 // sin esto la tarjeta se queda pegada con el numero de sellos de cuando se
@@ -177,19 +229,7 @@ async function updateGoogleLoyaltyObject(customer, business, tiers) {
     const creds    = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
     const objectId = `${process.env.GOOGLE_ISSUER_ID}.${customer.token}`;
     const nextTier = tiers.find(t => t.stamps_required > customer.stamps);
-
-    const now = Math.floor(Date.now() / 1000);
-    const authJwt = jwt.sign(
-      { iss: creds.client_email, scope: 'https://www.googleapis.com/auth/wallet_object.issuer',
-        aud: 'https://oauth2.googleapis.com/token', iat: now, exp: now + 3600 },
-      creds.private_key, { algorithm: 'RS256' },
-    );
-    const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: authJwt }),
-    });
-    const { access_token } = await tokenRes.json();
+    const access_token = await googleAccessToken(creds);
     if (!access_token) return;
 
     await fetch(`https://walletobjects.googleapis.com/walletobjects/v1/loyaltyObject/${objectId}`, {
@@ -244,5 +284,5 @@ function hexToRgb(hex) {
 
 module.exports = {
   generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured,
-  sendApplePush, updateGoogleLoyaltyObject,
+  sendApplePush, updateGoogleLoyaltyObject, updateGoogleLoyaltyClass,
 };

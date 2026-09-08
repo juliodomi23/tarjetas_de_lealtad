@@ -11,7 +11,7 @@ const {
 } = require('./db');
 const {
   generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured,
-  sendApplePush, updateGoogleLoyaltyObject,
+  sendApplePush, updateGoogleLoyaltyObject, updateGoogleLoyaltyClass,
 } = require('./wallet');
 
 const PORT       = process.env.PORT || 3000;
@@ -125,7 +125,9 @@ app.put('/api/admin/businesses/:slug', superAdmin, (req, res) => {
   const biz = getBusinessBySlug(db, req.params.slug);
   if (!biz) return res.status(404).json({ error: 'Negocio no encontrado' });
   try {
-    res.json(updateBusiness(db, req.params.slug, req.body));
+    const updated = updateBusiness(db, req.params.slug, req.body);
+    updateGoogleLoyaltyClass(updated).catch(() => {});
+    res.json(updated);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
@@ -339,6 +341,7 @@ app.put('/api/:slug/settings', withBusiness, staff, (req, res) => {
       staff_pass:      req.body.staff_pass,
       cycle_days:    req.body.cycle_days !== undefined ? Number(req.body.cycle_days) : undefined,
     });
+    updateGoogleLoyaltyClass(biz).catch(() => {});
     res.json(biz);
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
