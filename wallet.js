@@ -131,7 +131,10 @@ function googleWalletSaveUrl(customer, business, tiers) {
     accountId:   customer.phone,
     accountName: customer.name || 'Cliente',
     loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
-    barcode: { type: 'QR_CODE', value: customer.token, alternateText: customer.token },
+    // Sin alternateText: si no, Google Wallet muestra el token interno del
+    // cliente como texto crudo debajo del QR (feo y no le sirve de nada).
+    barcode: { type: 'QR_CODE', value: customer.token },
+    textModulesData: [{ id: 'cliente', header: 'CLIENTE', body: customer.name || 'Cliente' }],
     ...(nextTier ? {
       secondaryLoyaltyPoints: {
         label:   nextTier.description,
