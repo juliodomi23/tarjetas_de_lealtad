@@ -127,9 +127,12 @@ function loyaltyPointsFields(customer, nextTier) {
   const pendingRewards = customer.pending_rewards || 0;
   if (pendingRewards > 0) {
     return {
+      // El PATCH de Google fusiona balance en vez de reemplazarlo — sin poner
+      // int:null explicito, se queda el int viejo Y el string nuevo a la vez,
+      // y Google lo rechaza (400 "More than one type of loyalty point balances").
       loyaltyPoints: {
         label: pendingRewards > 1 ? `${pendingRewards} premios listos` : '🎁 Premio listo',
-        balance: { string: 'Pídelo en el mostrador' },
+        balance: { int: null, string: 'Pídelo en el mostrador' },
       },
       ...(nextTier ? {
         secondaryLoyaltyPoints: {
@@ -140,7 +143,9 @@ function loyaltyPointsFields(customer, nextTier) {
     };
   }
   return {
-    loyaltyPoints: { label: 'Sellos', balance: { int: customer.stamps } },
+    // string:null limpia el balance de texto que pudo quedar de un estado
+    // anterior de "premio listo" (mismo choque que arriba, en reversa).
+    loyaltyPoints: { label: 'Sellos', balance: { string: null, int: customer.stamps } },
     ...(nextTier ? {
       secondaryLoyaltyPoints: {
         label:   nextTier.description,
