@@ -55,8 +55,8 @@ async function generateApplePass(customer, business, tiers) {
       organizationName:   business.name,
       description:        `Lealtad ${business.name}`,
       backgroundColor:    `rgb(${hexToRgb(business.primary_color || '#8B1A1A')})`,
-      foregroundColor:    'rgb(255,255,255)',
-      labelColor:         'rgb(201,168,76)',
+      foregroundColor:    business.card_text_color ? `rgb(${hexToRgb(business.card_text_color)})` : autoTextColor(business.primary_color),
+      labelColor:         business.card_text_color ? `rgb(${hexToRgb(business.card_text_color)})` : autoTextColor(business.primary_color),
       // Sin esto Apple nunca vuelve a pedir el pase: es una foto congelada del
       // momento en que se agrego a Wallet. Con webServiceURL, el telefono se
       // registra y nosotros avisamos por push cuando cambian los sellos.
@@ -286,6 +286,18 @@ function sendApplePush(pushToken) {
 function hexToRgb(hex) {
   const n = parseInt(hex.replace('#', ''), 16);
   return `${(n >> 16) & 255},${(n >> 8) & 255},${n & 255}`;
+}
+
+// Negro o blanco segun que tan claro sea el fondo (luminancia relativa) — asi
+// un negocio puede poner fondo blanco, negro o cualquier color sin que el
+// texto quede invisible. Solo se usa como respaldo: si el dueno ya eligio
+// un color de texto en su panel, ese manda.
+function autoTextColor(hex) {
+  const n = parseInt((hex || '').replace('#', ''), 16);
+  if (isNaN(n)) return 'rgb(255,255,255)';
+  const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? 'rgb(20,20,20)' : 'rgb(255,255,255)';
 }
 
 module.exports = {

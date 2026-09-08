@@ -355,14 +355,14 @@ app.get('/join', (_req, res) => res.sendFile(path.join(__dirname, 'public/join.h
 app.get('/api/wallets', (_req, res) => res.json({ apple: appleConfigured(), google: googleConfigured() }));
 
 function customerWithBusiness(token) {
-  return db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.id AS business_id
+  return db.prepare(`SELECT c.*, b.name AS business_name, b.slug, b.primary_color, b.logo_url, b.card_bg_image, b.card_text_color, b.id AS business_id
     FROM customers c JOIN businesses b ON c.business_id=b.id WHERE c.token=?`).get(token);
 }
 
 async function buildApplePassBuffer(c) {
   return generateApplePass(
     { token: c.token, name: c.name, stamps: c.stamps, phone: c.phone },
-    { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image },
+    { name: c.business_name, slug: c.slug, primary_color: c.primary_color, logo_url: c.logo_url, card_bg_image: c.card_bg_image, card_text_color: c.card_text_color },
     getRewardTiers(db, c.business_id),
   );
 }
