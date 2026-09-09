@@ -153,12 +153,20 @@ class _HomeScreenState extends State<HomeScreen> {
             showDialog(
               context: context,
               builder: (_) => AlertDialog(
-                title: const Text('Eliminar tarjeta'),
-                content: Text('¿Quieres eliminar tu tarjeta de ${_localCards[i].business.name}?'),
+                title: const Text('Eliminar cuenta'),
+                content: Text('Se borrará permanentemente tu cuenta y tus sellos en ${_localCards[i].business.name}. Esta acción no se puede deshacer.'),
                 actions: [
                   TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
                   FilledButton(
-                    onPressed: () { Navigator.pop(context); _removeCard(i); },
+                    onPressed: () async {
+                      Navigator.pop(context);
+                      try {
+                        await Api.deleteAccount(_localCards[i].token);
+                      } catch (_) {
+                        // Sin conexión o ya borrada: igual se quita del teléfono.
+                      }
+                      _removeCard(i);
+                    },
                     child: const Text('Eliminar'),
                   ),
                 ],
@@ -330,7 +338,7 @@ class _CardPageState extends State<_CardPage> with WidgetsBindingObserver {
           const SizedBox(height: 16),
           TextButton(
             onPressed: widget.onRemove,
-            child: const Text('Eliminar esta tarjeta', style: TextStyle(color: muted, fontSize: 12)),
+            child: const Text('Eliminar mi cuenta', style: TextStyle(color: muted, fontSize: 12)),
           ),
         ],
       ),

@@ -8,6 +8,7 @@ const {
   join, addStamp, redeemReward, getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   stats, listCustomers, verifyPass,
   registerAppleDevice, unregisterAppleDevice, serialsForDevice, pushTokensForSerial,
+  deleteCustomer,
 } = require('./db');
 const {
   generateApplePass, googleWalletSaveUrl, appleConfigured, googleConfigured,
@@ -229,6 +230,16 @@ app.get('/api/card', (req, res) => {
     cycle_days: c.cycle_days,
     reward_tiers: getRewardTiers(db, c.business_id),
   });
+});
+
+// Borrar cuenta del cliente (App Store 5.1.1(v): toda app con alta de cuenta
+// debe permitir borrarla desde la misma app).
+app.delete('/api/card', (req, res) => {
+  const token = req.query.t || req.body.token;
+  if (!token) return res.status(400).json({ error: 'Falta token' });
+  const ok = deleteCustomer(db, token);
+  if (!ok) return res.status(404).json({ error: 'No encontrado' });
+  res.json({ ok: true });
 });
 
 // ── Staff: sellar ─────────────────────────────────────────────────────────────

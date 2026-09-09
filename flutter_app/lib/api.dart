@@ -127,6 +127,11 @@ class Api {
     return jsonDecode(r.body);
   }
 
+  static Future<void> deleteAccount(String token) async {
+    final r = await http.delete(Uri.parse('$apiBase/api/card?t=$token'));
+    if (r.statusCode != 200) throw jsonDecode(r.body)['error'] ?? 'Error';
+  }
+
   static Future<Map<String, dynamic>> wallets() async {
     final r = await http.get(Uri.parse('$apiBase/api/wallets'));
     if (r.statusCode != 200) return {'apple': false, 'google': false};

@@ -303,6 +303,13 @@ function pushTokensForSerial(db, serialNumber) {
   return db.prepare('SELECT push_token FROM apple_devices WHERE serial_number=?').all(serialNumber).map(r => r.push_token);
 }
 
+// Borrado de cuenta a petición del cliente (App Store 5.1.1(v)).
+function deleteCustomer(db, token) {
+  db.prepare('DELETE FROM apple_devices WHERE serial_number=?').run(token);
+  db.prepare('DELETE FROM stamps_log WHERE token=?').run(token);
+  return db.prepare('DELETE FROM customers WHERE token=?').run(token).changes > 0;
+}
+
 // ── Métricas ──────────────────────────────────────────────────────────────────
 
 function stats(db, businessId) {
@@ -334,4 +341,5 @@ module.exports = {
   getRewardTiers, addRewardTier, updateRewardTier, deleteRewardTier,
   addStamp, redeemReward, stats, listCustomers,
   registerAppleDevice, unregisterAppleDevice, serialsForDevice, pushTokensForSerial,
+  deleteCustomer,
 };
