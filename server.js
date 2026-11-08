@@ -299,6 +299,29 @@ app.post('/api/stamp', (req, res) => {
   } catch (e) { res.status(400).json({ error: e.message }); }
 });
 
+// Sellar por tag NFC: el navegador abre esta URL solo al tocar el tag físico
+// del cliente, así que el token en la URL es la autenticación (no hay header
+// de staff). Cooldown largo porque nadie está supervisando el tap.
+// ponytail: cooldown fijo en memoria vía addStamp, subir si un cliente se autosella de más.
+app.get('/sellar-nfc/:token', (req, res) => {
+  const token = req.params.token;
+  const customer = db.prepare('SELECT * FROM customers WHERE token=?').get(token);
+  const html = (title, msg) => res.send(`<!doctype html><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<body style="font-family:sans-serif;text-align:center;padding:3rem 1rem">
+<h2>${title}</h2><p>${msg}</p></body>`);
+
+  if (!customer) return html('Tarjeta no encontrada', 'Este tag no está vinculado a ningún cliente.');
+  const biz = db.prepare('SELECT * FROM businesses WHERE id=?').get(customer.business_id);
+  if (!biz.active) return html('Negocio desactivado', '');
+  try {
+    const result = addStamp(db, token, biz, 4 * 60 * 60); // 4h de cooldown
+    notifyEarned(biz, customer, result);
+    notifyWalletChanged(token);
+    html('¡Sello agregado! 🎉', `Llevas ${result.stamps} sello(s).`);
+  } catch (e) { html('No se pudo sellar', e.message); }
+});
+
 // Canjear un premio pendiente (misma autenticación que sellar)
 app.post('/api/redeem', (req, res) => {
   const token = req.body.token;
